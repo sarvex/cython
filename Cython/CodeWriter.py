@@ -99,11 +99,8 @@ class DeclarationWriter(TreeVisitor):
         self.visitchildren(node)
 
     def visit_CDefExternNode(self, node):
-        if node.include_file is None:
-            file = u'*'
-        else:
-            file = u'"%s"' % node.include_file
-        self.putline(u"cdef extern from %s:" % file)
+        file = u'*' if node.include_file is None else f'"{node.include_file}"'
+        self.putline(f"cdef extern from {file}:")
         self._visit_indented(node.body)
 
     def visit_CPtrDeclaratorNode(self, node):
@@ -171,7 +168,7 @@ class DeclarationWriter(TreeVisitor):
             self.put(u' ')
             self.put(node.name)
             if node.cname is not None:
-                self.put(u' "%s"' % node.cname)
+                self.put(f' "{node.cname}"')
         if extras:
             self.put(extras)
         self.endline(':')
@@ -184,10 +181,7 @@ class DeclarationWriter(TreeVisitor):
         self.dedent()
 
     def visit_CStructOrUnionDefNode(self, node):
-        if node.typedef_flag:
-            decl = u'ctypedef '
-        else:
-            decl = u'cdef '
+        decl = u'ctypedef ' if node.typedef_flag else u'cdef '
         if node.visibility == 'public':
             decl += u'public '
         if node.packed:
@@ -196,11 +190,9 @@ class DeclarationWriter(TreeVisitor):
         self._visit_container_node(node, decl, None, node.attributes)
 
     def visit_CppClassNode(self, node):
-        extras = ""
-        if node.templates:
-            extras = u"[%s]" % ", ".join(node.templates)
+        extras = f'[{", ".join(node.templates)}]' if node.templates else ""
         if node.base_classes:
-            extras += "(%s)" % ", ".join(node.base_classes)
+            extras += f'({", ".join(node.base_classes)})'
         self._visit_container_node(node, u"cdef cppclass", extras, node.attributes)
 
     def visit_CEnumDefNode(self, node):
@@ -209,7 +201,7 @@ class DeclarationWriter(TreeVisitor):
     def visit_CEnumDefItemNode(self, node):
         self.startline(node.name)
         if node.cname:
-            self.put(u' "%s"' % node.cname)
+            self.put(f' "{node.cname}"')
         if node.value:
             self.put(u" = ")
             self.visit(node.value)
@@ -241,7 +233,7 @@ class DeclarationWriter(TreeVisitor):
 
     def visit_FuncDefNode(self, node):
         # TODO: support cdef + cpdef functions
-        self.startline(u"def %s(" % node.name)
+        self.startline(f"def {node.name}(")
         self.comma_separated_list(node.args)
         self.endline(u"):")
         self._visit_indented(node.body)
@@ -409,7 +401,7 @@ class StatementWriter(DeclarationWriter):
     def visit_InPlaceAssignmentNode(self, node):
         self.startline()
         self.visit(node.lhs)
-        self.put(u" %s= " % node.operator)
+        self.put(f" {node.operator}= ")
         self.visit(node.rhs)
         self.endline()
 
@@ -459,7 +451,7 @@ class StatementWriter(DeclarationWriter):
         self.line("raise")
 
     def visit_ImportNode(self, node):
-        self.put(u"(import %s)" % node.module_name.value)
+        self.put(f"(import {node.module_name.value})")
 
     def visit_TempsBlockNode(self, node):
         """
@@ -467,10 +459,8 @@ class StatementWriter(DeclarationWriter):
         an index of the TempsBlockNode and the second number is an index
         of the temporary which that block allocates.
         """
-        idx = 0
-        for handle in node.temps:
+        for idx, handle in enumerate(node.temps):
             self.tempnames[handle] = "$%d_%d" % (self.tempblockindex, idx)
-            idx += 1
         self.tempblockindex += 1
         self.visit(node.body)
 
@@ -540,7 +530,7 @@ class ExpressionWriter(TreeVisitor):
         repr_val = repr(node.value)
         if repr_val[0] in 'ub':
             repr_val = repr_val[1:]
-        self.put(u"%s%s" % (prefix, repr_val))
+        self.put(f"{prefix}{repr_val}")
 
     def visit_BytesNode(self, node):
         self.emit_string(node, u"b")
@@ -621,7 +611,7 @@ class ExpressionWriter(TreeVisitor):
         op = node.operator
         prec = self.unop_precedence[op]
         self.operator_enter(prec)
-        self.put(u"%s" % node.operator)
+        self.put(f"{node.operator}")
         self.visit(node.operand)
         self.operator_exit()
 
@@ -630,7 +620,7 @@ class ExpressionWriter(TreeVisitor):
         prec = self.binop_precedence.get(op, 0)
         self.operator_enter(prec)
         self.visit(node.operand1)
-        self.put(u" %s " % op.replace('_', ' '))
+        self.put(f" {op.replace('_', ' ')} ")
         self.visit(node.operand2)
         self.operator_exit()
 
@@ -684,7 +674,7 @@ class ExpressionWriter(TreeVisitor):
 
     def visit_AttributeNode(self, node):
         self.visit(node.obj)
-        self.put(u".%s" % node.attribute)
+        self.put(f".{node.attribute}")
 
     def visit_SimpleCallNode(self, node):
         self.visit(node.function)
@@ -718,7 +708,7 @@ class ExpressionWriter(TreeVisitor):
                 self.emit_kwd_args(expr)
         elif isinstance(node, DictNode):
             for expr in node.subexpr_nodes():
-                self.put(u"%s=" % expr.key.value)
+                self.put(f"{expr.key.value}=")
                 self.visit(expr.value)
                 self.put(u", ")
         else:

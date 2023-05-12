@@ -27,7 +27,7 @@ class TestGlobbing(unittest.TestCase):
         os.chdir(temp_path)
 
         for dir1 in "abcd":
-            for dir1x in [dir1, dir1 + 'x']:
+            for dir1x in [dir1, f'{dir1}x']:
                 for dir2 in "xyz":
                     dir_path = pjoin(dir1x, dir2)
                     os.makedirs(dir_path)
@@ -79,14 +79,14 @@ class TestGlobbing(unittest.TestCase):
                 for dirname in "xyz"
                 for filename in ["file2_pyx.pyx", "file2_py.py"]
             ]
-            self.files_equal(basedir + "/*/*", files)
-            self.files_equal(basedir + "/*/*.c12", [])
+            self.files_equal(f"{basedir}/*/*", files)
+            self.files_equal(f"{basedir}/*/*.c12", [])
             self.files_equal(basedir + "/*/*.{py,pyx,c12}", files)
             self.files_equal(basedir + "/*/*.{py,pyx}", files)
             self.files_equal(basedir + "/*/*.{pyx}", files[::2])
-            self.files_equal(basedir + "/*/*.pyx", files[::2])
+            self.files_equal(f"{basedir}/*/*.pyx", files[::2])
             self.files_equal(basedir + "/*/*.{py}", files[1::2])
-            self.files_equal(basedir + "/*/*.py", files[1::2])
+            self.files_equal(f"{basedir}/*/*.py", files[1::2])
 
             for subdir in "xy*":
                 files = [
@@ -95,13 +95,13 @@ class TestGlobbing(unittest.TestCase):
                     if subdir in ('*', dirname)
                     for filename in ["file2_pyx.pyx", "file2_py.py"]
                 ]
-                path = basedir + '/' + subdir + '/'
-                self.files_equal(path + "*", files)
+                path = f'{basedir}/{subdir}/'
+                self.files_equal(f"{path}*", files)
                 self.files_equal(path + "*.{py,pyx}", files)
                 self.files_equal(path + "*.{pyx}", files[::2])
-                self.files_equal(path + "*.pyx", files[::2])
+                self.files_equal(f"{path}*.pyx", files[::2])
                 self.files_equal(path + "*.{py}", files[1::2])
-                self.files_equal(path + "*.py", files[1::2])
+                self.files_equal(f"{path}*.py", files[1::2])
 
     def test_extended_iglob_double_star(self):
         basedirs = os.listdir(".")

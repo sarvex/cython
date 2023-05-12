@@ -64,9 +64,12 @@ class AutoTestDictTransform(ScopeTrackingTransform):
     def visit_FuncDefNode(self, node):
         if not node.doc or (isinstance(node, DefNode) and node.fused_py_func):
             return node
-        if not self.cdef_docstrings:
-            if isinstance(node, CFuncDefNode) and not node.py_func:
-                return node
+        if (
+            not self.cdef_docstrings
+            and isinstance(node, CFuncDefNode)
+            and not node.py_func
+        ):
+            return node
         if not self.all_docstrings and '>>>' not in node.doc:
             return node
 
@@ -75,10 +78,7 @@ class AutoTestDictTransform(ScopeTrackingTransform):
             path = node.entry.name
         elif self.scope_type in ('pyclass', 'cclass'):
             if isinstance(node, CFuncDefNode):
-                if node.py_func is not None:
-                    name = node.py_func.name
-                else:
-                    name = node.entry.name
+                name = node.py_func.name if node.py_func is not None else node.entry.name
             else:
                 name = node.name
             if self.scope_type == 'cclass' and name in self.excludelist:
@@ -89,10 +89,9 @@ class AutoTestDictTransform(ScopeTrackingTransform):
                 class_name = self.scope_node.class_name
             if isinstance(node.entry.scope, Symtab.PropertyScope):
                 property_method_name = node.entry.scope.name
-                path = "%s.%s.%s" % (class_name, node.entry.scope.name,
-                                     node.entry.name)
+                path = f"{class_name}.{node.entry.scope.name}.{node.entry.name}"
             else:
-                path = "%s.%s" % (class_name, node.entry.name)
+                path = f"{class_name}.{node.entry.name}"
         else:
             assert False
         self.add_test(node.pos, path, node.doc)

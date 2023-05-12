@@ -28,15 +28,13 @@ class TestCythonizeArgsParser(TestCase):
         are_none = ['language_level', 'annotate', 'build', 'build_inplace', 'force', 'quiet', 'lenient', 'keep_going', 'no_docstrings']
         for opt_name in empty_containers:
             if len(getattr(options, opt_name))!=0 and (opt_name not in skip):
-                self.assertEqual(opt_name,"", msg="For option "+opt_name)
+                self.assertEqual(opt_name, "", msg=f"For option {opt_name}")
                 return False
         for opt_name in are_none:
             if (getattr(options, opt_name) is not None) and (opt_name not in skip):
-                self.assertEqual(opt_name,"", msg="For option "+opt_name)
+                self.assertEqual(opt_name, "", msg=f"For option {opt_name}")
                 return False
-        if options.parallel!=parallel_compiles and ('parallel' not in skip):
-            return False
-        return True
+        return options.parallel == parallel_compiles or 'parallel' in skip
 
     # testing directives:
     def test_directive_short(self):
@@ -107,8 +105,13 @@ class TestCythonizeArgsParser(TestCase):
             cmd = '{key}={value}'.format(key=key, value=str(value))
             options, args =  self.parse_args(['-X', cmd])
             self.assertFalse(args)
-            self.assertTrue(self.are_default(options, ['directives']), msg = "Error for option: "+cmd)
-            self.assertEqual(options.directives[key], value, msg = "Error for option: "+cmd)
+            self.assertTrue(
+                self.are_default(options, ['directives']),
+                msg=f"Error for option: {cmd}",
+            )
+            self.assertEqual(
+                options.directives[key], value, msg=f"Error for option: {cmd}"
+            )
 
     def test_directives_wrong(self):
         directives = {
@@ -120,7 +123,7 @@ class TestCythonizeArgsParser(TestCase):
         }
         for key, value in directives.items():
             cmd = '{key}={value}'.format(key=key, value=str(value))
-            with self.assertRaises(ValueError, msg = "Error for option: "+cmd) as context:
+            with self.assertRaises(ValueError, msg=f"Error for option: {cmd}") as context:
                 options, args =  self.parse_args(['-X', cmd])
 
     def test_compile_time_env_short(self):

@@ -32,9 +32,7 @@ class CythonScope(ModuleScope):
         return self.context.cpp
 
     def lookup_type(self, name):
-        # This function should go away when types are all first-level objects.
-        type = parse_basic_type(name)
-        if type:
+        if type := parse_basic_type(name):
             return type
 
         return super(CythonScope, self).lookup_type(name)
@@ -49,7 +47,7 @@ class CythonScope(ModuleScope):
         return entry
 
     def find_module(self, module_name, pos):
-        error("cython.%s is not available" % module_name, pos)
+        error(f"cython.{module_name} is not available", pos)
 
     def find_submodule(self, module_name, as_package=False):
         entry = self.entries.get(module_name, None)
@@ -64,8 +62,10 @@ class CythonScope(ModuleScope):
             # expected to create a submodule here (to protect CythonScope's
             # possible immutability). Hack ourselves out of the situation
             # for now.
-            raise error((StringSourceDescriptor(u"cython", u""), 0, 0),
-                  "cython.%s is not available" % module_name)
+            raise error(
+                (StringSourceDescriptor(u"cython", u""), 0, 0),
+                f"cython.{module_name} is not available",
+            )
 
     def lookup_qualified_name(self, qname):
         # ExprNode.as_cython_attribute generates qnames and we untangle it here...

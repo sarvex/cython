@@ -34,12 +34,7 @@ from .Pythran import has_np_pythran, pythran_type, is_pythran_buffer
 from ..Utils import add_metaclass
 
 
-if sys.version_info[0] >= 3:
-    _py_int_types = int
-else:
-    _py_int_types = (int, long)
-
-
+_py_int_types = int if sys.version_info[0] >= 3 else (int, long)
 IMPLICIT_CLASSMETHODS = {"__init_subclass__", "__class_getitem__"}
 
 
@@ -75,27 +70,22 @@ def embed_position(pos, docstring):
 
 def write_func_call(func, codewriter_class):
     def f(*args, **kwds):
-        if len(args) > 1 and isinstance(args[1], codewriter_class):
-            # here we annotate the code with this function call
-            # but only if new code is generated
-            node, code = args[:2]
-            marker = '                    /* %s -> %s.%s %s */' % (
-                ' ' * code.call_level,
-                node.__class__.__name__,
-                func.__name__,
-                node.pos[1:],
-            )
-            insertion_point = code.insertion_point()
-            start = code.buffer.stream.tell()
-            code.call_level += 4
-            res = func(*args, **kwds)
-            code.call_level -= 4
-            if start != code.buffer.stream.tell():
-                code.putln(marker.replace('->', '<-', 1))
-                insertion_point.putln(marker)
-            return res
-        else:
+        if len(args) <= 1 or not isinstance(args[1], codewriter_class):
             return func(*args, **kwds)
+        # here we annotate the code with this function call
+        # but only if new code is generated
+        node, code = args[:2]
+        marker = f"                    /* {' ' * code.call_level} -> {node.__class__.__name__}.{func.__name__} {node.pos[1:]} */"
+        insertion_point = code.insertion_point()
+        start = code.buffer.stream.tell()
+        code.call_level += 4
+        res = func(*args, **kwds)
+        code.call_level -= 4
+        if start != code.buffer.stream.tell():
+            code.putln(marker.replace('->', '<-', 1))
+            insertion_point.putln(marker)
+        return res
+
     return f
 
 
@@ -127,8 +117,9 @@ class CheckAnalysers(type):
             def call(*args, **kwargs):
                 retval = func(*args, **kwargs)
                 if retval is None:
-                    print('%s %s %s' % (name, args, kwargs))
+                    print(f'{name} {args} {kwargs}')
                 return retval
+
             return call
 
         attrs = dict(attrs)
@@ -187,7 +178,7 @@ class Node(object):
     in_nogil_context = False  # For use only during code generation.
 
     def gil_error(self, env=None):
-        error(self.pos, "%s not allowed without gil" % self.gil_message)
+        error(self.pos, f"{self.gil_message} not allowed without gil")
 
     cpp_message = "Operation"
 
@@ -196,7 +187,7 @@ class Node(object):
             self.cpp_error()
 
     def cpp_error(self):
-        error(self.pos, "%s only allowed in c++" % self.cpp_message)
+        error(self.pos, f"{self.cpp_message} only allowed in c++")
 
     def clone_node(self):
         """Clone the node. This is defined as a shallow copy, except for member lists
@@ -208,7 +199,7 @@ class Node(object):
         for attrname in result.child_attrs:
             value = getattr(result, attrname)
             if isinstance(value, list):
-                setattr(result, attrname, [x for x in value])
+                setattr(result, attrname, list(value))
         return result
 
 
@@ -239,12 +230,14 @@ class Node(object):
         pass
 
     def analyse_expressions(self, env):
-        raise InternalError("analyse_expressions not implemented for %s" %
-            self.__class__.__name__)
+        raise InternalError(
+            f"analyse_expressions not implemented for {self.__class__.__name__}"
+        )
 
     def generate_code(self, code):
-        raise InternalError("generate_code not implemented for %s" %
-            self.__class__.__name__)
+        raise InternalError(
+            f"generate_code not implemented for {self.__class__.__name__}"
+        )
 
     def annotate(self, code):
         # mro does the wrong thing
@@ -287,20 +280,19 @@ class Node(object):
             if isinstance(x, Node):
                 return x.dump(level, filter_out, cutoff-1, encountered)
             elif isinstance(x, list):
-                return "[%s]" % ", ".join([dump_child(item, level) for item in x])
+                return f'[{", ".join([dump_child(item, level) for item in x])}]'
             else:
                 return repr(x)
 
         attrs = [(key, value) for key, value in self.__dict__.items() if key not in filter_out]
-        if len(attrs) == 0:
+        if not attrs:
             return "<%s (0x%x)>" % (self.__class__.__name__, id(self))
-        else:
-            indent = "  " * level
-            res = "<%s (0x%x)\n" % (self.__class__.__name__, id(self))
-            for key, value in attrs:
-                res += "%s  %s: %s\n" % (indent, key, dump_child(value, level + 1))
-            res += "%s>" % indent
-            return res
+        indent = "  " * level
+        res = "<%s (0x%x)\n" % (self.__class__.__name__, id(self))
+        for key, value in attrs:
+            res += "%s  %s: %s\n" % (indent, key, dump_child(value, level + 1))
+        res += f"{indent}>"
+        return res
 
     def dump_pos(self, mark_column=False, marker='(#)'):
         """Debug helper method that returns the source code context of this node as a string.
@@ -384,8 +376,7 @@ class StatListNode(Node):
 
     @staticmethod
     def create_analysed(pos, env, **kw):
-        node = StatListNode(pos, **kw)
-        return node  # No node-specific analysis needed
+        return StatListNode(pos, **kw)
 
     def analyse_declarations(self, env):
         #print "StatListNode.analyse_declarations" ###
@@ -431,8 +422,9 @@ class StatNode(Node):
         pass
 
     def generate_execution_code(self, code):
-        raise InternalError("generate_execution_code not implemented for %s" %
-            self.__class__.__name__)
+        raise InternalError(
+            f"generate_execution_code not implemented for {self.__class__.__name__}"
+        )
 
 
 class CDefExternNode(StatNode):
@@ -451,13 +443,12 @@ class CDefExternNode(StatNode):
         if self.include_file or self.verbatim_include:
             # Determine whether include should be late
             stats = self.body.stats
-            if not env.directives['preliminary_late_includes_cy28']:
-                late = False
-            elif not stats:
-                # Special case: empty 'cdef extern' blocks are early
-                late = False
-            else:
-                late = all(isinstance(node, CVarDefNode) for node in stats)
+            late = (
+                False
+                if not env.directives['preliminary_late_includes_cy28']
+                or not stats
+                else all(isinstance(node, CVarDefNode) for node in stats)
+            )
             env.add_include_file(self.include_file, self.verbatim_include, late)
 
     def analyse_expressions(self, env):
@@ -527,9 +518,10 @@ class CNameDeclaratorNode(CDeclaratorNode):
             try:
                 base_type = base_type.specialize(env.fused_to_specific)
             except CannotSpecialize:
-                error(self.pos,
-                      "'%s' cannot be specialized since its type is not a fused argument to this function" %
-                      self.name)
+                error(
+                    self.pos,
+                    f"'{self.name}' cannot be specialized since its type is not a fused argument to this function",
+                )
 
         self.type = base_type
         return self, base_type
@@ -616,7 +608,7 @@ class CArrayDeclaratorNode(CDeclaratorNode):
         else:
             size = None
         if not base_type.is_complete():
-            error(self.pos, "Array element type '%s' is incomplete" % base_type)
+            error(self.pos, f"Array element type '{base_type}' is incomplete")
         if base_type.is_pyobject:
             error(self.pos, "Array element cannot be a Python object")
         if base_type.is_cfunction:
@@ -647,26 +639,25 @@ class CFuncDeclaratorNode(CDeclaratorNode):
         return self.base.declared_name()
 
     def analyse_templates(self):
-        if isinstance(self.base, CArrayDeclaratorNode):
-            from .ExprNodes import TupleNode, NameNode
-            template_node = self.base.dimension
-            if isinstance(template_node, TupleNode):
-                template_nodes = template_node.args
-            elif isinstance(template_node, NameNode):
-                template_nodes = [template_node]
-            else:
-                error(template_node.pos, "Template arguments must be a list of names")
-                return None
-            self.templates = []
-            for template in template_nodes:
-                if isinstance(template, NameNode):
-                    self.templates.append(PyrexTypes.TemplatePlaceholderType(template.name))
-                else:
-                    error(template.pos, "Template arguments must be a list of names")
-            self.base = self.base.base
-            return self.templates
-        else:
+        if not isinstance(self.base, CArrayDeclaratorNode):
             return None
+        from .ExprNodes import TupleNode, NameNode
+        template_node = self.base.dimension
+        if isinstance(template_node, TupleNode):
+            template_nodes = template_node.args
+        elif isinstance(template_node, NameNode):
+            template_nodes = [template_node]
+        else:
+            error(template_node.pos, "Template arguments must be a list of names")
+            return None
+        self.templates = []
+        for template in template_nodes:
+            if isinstance(template, NameNode):
+                self.templates.append(PyrexTypes.TemplatePlaceholderType(template.name))
+            else:
+                error(template.pos, "Template arguments must be a list of names")
+        self.base = self.base.base
+        return self.templates
 
     def analyse(self, return_type, env, nonempty=0, directive_locals=None, visibility=None, in_pxd=False):
         if directive_locals is None:
@@ -726,33 +717,37 @@ class CFuncDeclaratorNode(CDeclaratorNode):
                 and self.exception_check != '+'):
             error(self.pos, "Exception clause not allowed for function returning Python object")
         else:
-            if self.exception_value is None and self.exception_check and self.exception_check != '+':
-                # Use an explicit exception return value to speed up exception checks.
-                # Even if it is not declared, we can use the default exception value of the return type,
-                # unless the function is some kind of external function that we do not control.
-                if (return_type.exception_value is not None and (visibility != 'extern' and not in_pxd)):
-                    # - We skip this optimization for extension types; they are more difficult because
-                    #   the signature must match the base type signature.
-                    # - Same for function pointers, as we want them to be able to match functions
-                    #   with any exception value.
-                    # - Ideally the function-pointer test would be better after self.base is analysed
-                    #   however that is hard to do with the current implementation so it lives here
-                    #   for now.
-                    if not env.is_c_class_scope and not isinstance(self.base, CPtrDeclaratorNode):
-                        from .ExprNodes import ConstNode
-                        self.exception_value = ConstNode(
-                            self.pos, value=return_type.exception_value, type=return_type)
+            if (
+                self.exception_value is None
+                and self.exception_check
+                and self.exception_check != '+'
+                and (
+                    return_type.exception_value is not None
+                    and (visibility != 'extern' and not in_pxd)
+                )
+                and not env.is_c_class_scope
+                and not isinstance(self.base, CPtrDeclaratorNode)
+            ):
+                from .ExprNodes import ConstNode
+                self.exception_value = ConstNode(
+                    self.pos, value=return_type.exception_value, type=return_type)
             if self.exception_value:
                 if self.exception_check == '+':
                     self.exception_value = self.exception_value.analyse_const_expression(env)
                     exc_val_type = self.exception_value.type
-                    if (not exc_val_type.is_error
-                            and not exc_val_type.is_pyobject
-                            and not (exc_val_type.is_cfunction
-                                     and not exc_val_type.return_type.is_pyobject
-                                     and not exc_val_type.args)
-                            and not (exc_val_type == PyrexTypes.c_char_type
-                                     and self.exception_value.value == '*')):
+                    if (
+                        not exc_val_type.is_error
+                        and not exc_val_type.is_pyobject
+                        and (
+                            not exc_val_type.is_cfunction
+                            or exc_val_type.return_type.is_pyobject
+                            or exc_val_type.args
+                        )
+                        and (
+                            exc_val_type != PyrexTypes.c_char_type
+                            or self.exception_value.value != '*'
+                        )
+                    ):
                         error(self.exception_value.pos,
                               "Exception value must be a Python exception, or C++ function with no arguments, or *.")
                     exc_val = self.exception_value
@@ -824,7 +819,7 @@ class CFuncDeclaratorNode(CDeclaratorNode):
         cdef function).
         """
         scope = StructOrUnionScope()
-        arg_count_member = '%sn' % Naming.pyrex_prefix
+        arg_count_member = f'{Naming.pyrex_prefix}n'
         scope.declare_var(arg_count_member, PyrexTypes.c_int_type, self.pos)
 
         for arg in func_type.args[len(func_type.args) - self.optional_arg_count:]:
@@ -939,8 +934,7 @@ class CArgDeclNode(Node):
             could_be_name = False
         self.base_type.is_arg = True
         base_type = self.base_type.analyse(env, could_be_name=could_be_name)
-        base_arg_name = getattr(self.base_type, 'arg_name', None)
-        if base_arg_name:
+        if base_arg_name := getattr(self.base_type, 'arg_name', None):
             self.declarator.name = base_arg_name
 
         # The parser is unable to resolve the ambiguity of [] as part of the
@@ -980,11 +974,7 @@ class CArgDeclNode(Node):
             if "typing.Optional" in modifiers:
                 # "x: Optional[...]"  =>  explicitly allow 'None'
                 arg_type = arg_type.resolve()
-                if arg_type and not arg_type.is_pyobject:
-                    # We probably already reported this as "cannot be applied to non-Python type".
-                    # error(annotation.pos, "Only Python type arguments can use typing.Optional[...]")
-                    pass
-                else:
+                if not arg_type or arg_type.is_pyobject:
                     self.or_none = True
             elif arg_type is py_object_type:
                 # exclude ": object" from the None check - None is a generic object.
@@ -1002,13 +992,12 @@ class CArgDeclNode(Node):
         return arg_type
 
     def calculate_default_value_code(self, code):
-        if self.default_value is None:
-            if self.default:
-                if self.default.is_literal:
-                    # will not output any code, just assign the result_code
-                    self.default.generate_evaluation_code(code)
-                    return self.type.cast_code(self.default.result())
-                self.default_value = code.get_argument_default_const(self.type)
+        if self.default_value is None and self.default:
+            if self.default.is_literal:
+                # will not output any code, just assign the result_code
+                self.default.generate_evaluation_code(code)
+                return self.type.cast_code(self.default.result())
+            self.default_value = code.get_argument_default_const(self.type)
         return self.default_value
 
     def annotate(self, code):
@@ -1024,7 +1013,7 @@ class CArgDeclNode(Node):
         default.generate_evaluation_code(code)
         default.make_owned_reference(code)
         result = default.result() if overloaded_assignment else default.result_as(self.type)
-        code.putln("%s = %s;" % (target, result))
+        code.putln(f"{target} = {result};")
         code.put_giveref(default.result(), self.type)
         default.generate_post_assignment_code(code)
         default.free_temps(code)
@@ -1128,13 +1117,12 @@ class CSimpleBaseTypeNode(CBaseTypeNode):
                     else:
                         type = py_object_type
                     self.arg_name = EncodedString(self.name)
+                elif self.templates:
+                    if self.name not in self.templates:
+                        error(self.pos, f"'{self.name}' is not a type identifier")
+                    type = PyrexTypes.TemplatePlaceholderType(self.name)
                 else:
-                    if self.templates:
-                        if self.name not in self.templates:
-                            error(self.pos, "'%s' is not a type identifier" % self.name)
-                        type = PyrexTypes.TemplatePlaceholderType(self.name)
-                    else:
-                        error(self.pos, "'%s' is not a type identifier" % self.name)
+                    error(self.pos, f"'{self.name}' is not a type identifier")
         if type and type.is_fused and env.fused_to_specific:
             type = type.specialize(env.fused_to_specific)
         if self.complex:
@@ -1200,11 +1188,11 @@ class CNestedBaseTypeNode(CBaseTypeNode):
         if base_type is PyrexTypes.error_type:
             return PyrexTypes.error_type
         if not base_type.is_cpp_class:
-            error(self.pos, "'%s' is not a valid type scope" % base_type)
+            error(self.pos, f"'{base_type}' is not a valid type scope")
             return PyrexTypes.error_type
         type_entry = base_type.scope.lookup_here(self.name)
         if not type_entry or not type_entry.is_type:
-            error(self.pos, "'%s.%s' is not a type identifier" % (base_type, self.name))
+            error(self.pos, f"'{base_type}.{self.name}' is not a type identifier")
             return PyrexTypes.error_type
         return type_entry.type
 
@@ -1246,10 +1234,10 @@ class TemplatedTypeNode(CBaseTypeNode):
                 if ttype.equivalent_type and not template_node.as_cython_attribute():
                     ttype = ttype.equivalent_type
                 else:
-                    error(template_node.pos, "%s[...] cannot be applied to non-Python type %s" % (
-                        base_type.python_type_constructor_name,
-                        ttype,
-                    ))
+                    error(
+                        template_node.pos,
+                        f"{base_type.python_type_constructor_name}[...] cannot be applied to non-Python type {ttype}",
+                    )
                     ttype = error_type
             template_types.append(ttype)
 
@@ -1265,7 +1253,7 @@ class TemplatedTypeNode(CBaseTypeNode):
             # Templated class, Python generics, etc.
             if self.keyword_args and self.keyword_args.key_value_pairs:
                 tp = "c++ templates" if base_type.is_cpp_class else "indexed types"
-                error(self.pos, "%s cannot take keyword arguments" % tp)
+                error(self.pos, f"{tp} cannot take keyword arguments")
                 self.type = PyrexTypes.error_type
                 return self.type
 
@@ -1301,10 +1289,7 @@ class TemplatedTypeNode(CBaseTypeNode):
             else:
                 # It would be nice to merge this class with CArrayDeclaratorNode,
                 # but arrays are part of the declaration, not the type...
-                if not self.positional_args:
-                    dimension = None
-                else:
-                    dimension = self.positional_args[0]
+                dimension = None if not self.positional_args else self.positional_args[0]
                 self.array_declarator = CArrayDeclaratorNode(
                     self.pos,
                     base=empty_declarator,
@@ -1315,9 +1300,10 @@ class TemplatedTypeNode(CBaseTypeNode):
             try:
                 self.type = self.type.specialize(env.fused_to_specific)
             except CannotSpecialize:
-                error(self.pos,
-                      "'%s' cannot be specialized since its type is not a fused argument to this function" %
-                      self.name)
+                error(
+                    self.pos,
+                    f"'{self.name}' cannot be specialized since its type is not a fused argument to this function",
+                )
 
         return self.type
 
@@ -1495,9 +1481,12 @@ class CVarDefNode(StatNode):
             else:
                 name_declarator, type = declarator.analyse(
                     base_type, env, visibility=visibility, in_pxd=self.in_pxd)
-            if not type.is_complete():
-                if not (self.visibility == 'extern' and type.is_array or type.is_memoryviewslice):
-                    error(declarator.pos, "Variable type '%s' is incomplete" % type)
+            if (
+                not type.is_complete()
+                and (self.visibility != 'extern' or not type.is_array)
+                and not type.is_memoryviewslice
+            ):
+                error(declarator.pos, f"Variable type '{type}' is incomplete")
             if self.visibility == 'extern' and type.is_pyobject:
                 error(declarator.pos, "Python object cannot be declared extern")
             name = name_declarator.name
@@ -1555,9 +1544,7 @@ class CStructOrUnionDefNode(StatNode):
             packed=self.packed)
 
     def analyse_declarations(self, env):
-        scope = None
-        if self.attributes is not None:
-            scope = StructOrUnionScope(self.name)
+        scope = StructOrUnionScope(self.name) if self.attributes is not None else None
         self.declare(env, scope)
         if self.attributes is not None:
             if self.in_pxd and not env.in_cinclude:
@@ -1620,7 +1607,8 @@ class CppClassNode(CStructOrUnionDefNode, BlockNode):
             if base_class.is_cpp_class or base_class.is_struct:
                 return True
             else:
-                error(self.pos, "Base class '%s' not a struct or class." % base_class)
+                error(self.pos, f"Base class '{base_class}' not a struct or class.")
+
         base_class_types = filter(base_ok, [b.analyse(scope or env) for b in self.base_classes])
         self.entry = env.declare_cpp_class(
             self.name, scope, self.pos,
@@ -1636,11 +1624,10 @@ class CppClassNode(CStructOrUnionDefNode, BlockNode):
                 if isinstance(attr, CFuncDefNode):
                     yield attr
                 elif isinstance(attr, CompilerDirectivesNode):
-                    for sub_attr in func_attributes(attr.body.stats):
-                        yield sub_attr
+                    yield from func_attributes(attr.body.stats)
                 elif isinstance(attr, CppClassNode) and attr.attributes is not None:
-                    for sub_attr in func_attributes(attr.attributes):
-                        yield sub_attr
+                    yield from func_attributes(attr.attributes)
+
         if self.attributes is not None:
             if self.in_pxd and not env.in_cinclude:
                 self.entry.defined_in_pxd = 1
@@ -1652,7 +1639,9 @@ class CppClassNode(CStructOrUnionDefNode, BlockNode):
             for func in func_attributes(self.attributes):
                 defined_funcs.append(func)
                 if self.templates is not None:
-                    func.template_declaration = "template <typename %s>" % ", typename ".join(template_names)
+                    func.template_declaration = (
+                        f'template <typename {", typename ".join(template_names)}>'
+                    )
         self.body = StatListNode(self.pos, stats=defined_funcs)
         self.scope = scope
 
@@ -1688,10 +1677,7 @@ class CEnumDefNode(StatNode):
     doc = None
 
     def declare(self, env):
-        doc = None
-        if Options.docstrings:
-            doc = embed_position(self.pos, self.doc)
-
+        doc = embed_position(self.pos, self.doc) if Options.docstrings else None
         self.entry = env.declare_enum(
             self.name, self.pos,
             cname=self.cname,
@@ -1731,16 +1717,13 @@ class CEnumDefNode(StatNode):
             code.mark_pos(self.pos)
             temp = code.funcstate.allocate_temp(PyrexTypes.py_object_type, manage_ref=True)
             for item in self.entry.enum_values:
-                code.putln("%s = PyInt_FromLong(%s); %s" % (
-                    temp,
-                    item.cname,
-                    code.error_goto_if_null(temp, item.pos)))
+                code.putln(
+                    f"{temp} = PyInt_FromLong({item.cname}); {code.error_goto_if_null(temp, item.pos)}"
+                )
                 code.put_gotref(temp, PyrexTypes.py_object_type)
-                code.putln('if (PyDict_SetItemString(%s, "%s", %s) < 0) %s' % (
-                    Naming.moddict_cname,
-                    item.name,
-                    temp,
-                    code.error_goto(item.pos)))
+                code.putln(
+                    f'if (PyDict_SetItemString({Naming.moddict_cname}, "{item.name}", {temp}) < 0) {code.error_goto(item.pos)}'
+                )
                 code.put_decref_clear(temp, PyrexTypes.py_object_type)
             code.funcstate.release_temp(temp)
 
@@ -1760,7 +1743,7 @@ class CEnumDefItemNode(StatNode):
                 self.value = self.value.analyse_const_expression(env)
 
         if enum_entry.type.is_cpp_enum:
-            cname = "%s::%s" % (enum_entry.cname, self.name)
+            cname = f"{enum_entry.cname}::{self.name}"
         else:
             cname = self.cname
 

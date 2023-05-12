@@ -29,10 +29,7 @@ IS_PY3 = sys.version_info >= (3,)
 # A utility function to convert user-supplied ASCII strings to unicode.
 if not IS_PY3:
     def to_unicode(s):
-        if isinstance(s, bytes):
-            return s.decode('ascii')
-        else:
-            return s
+        return s.decode('ascii') if isinstance(s, bytes) else s
 else:
     to_unicode = lambda x: x
 
@@ -88,10 +85,7 @@ def unbound_symbols(code, context=None):
 
 def unsafe_type(arg, context=None):
     py_type = type(arg)
-    if py_type is int:
-        return 'long'
-    else:
-        return safe_type(arg, context)
+    return 'long' if py_type is int else safe_type(arg, context)
 
 
 def safe_type(arg, context=None):
@@ -105,16 +99,17 @@ def safe_type(arg, context=None):
     elif py_type is bool:
         return 'bint'
     elif 'numpy' in sys.modules and isinstance(arg, sys.modules['numpy'].ndarray):
-        return 'numpy.ndarray[numpy.%s_t, ndim=%s]' % (arg.dtype.name, arg.ndim)
+        return f'numpy.ndarray[numpy.{arg.dtype.name}_t, ndim={arg.ndim}]'
     else:
         for base_type in py_type.__mro__:
             if base_type.__module__ in ('__builtin__', 'builtins'):
                 return 'object'
-            module = context.find_module(base_type.__module__, need_pxd=False)
-            if module:
+            if module := context.find_module(
+                base_type.__module__, need_pxd=False
+            ):
                 entry = module.lookup(base_type.__name__)
                 if entry.is_type:
-                    return '%s.%s' % (base_type.__module__, base_type.__name__)
+                    return f'{base_type.__module__}.{base_type.__name__}'
         return 'object'
 
 
@@ -147,10 +142,10 @@ def _populate_unbound(kwds, unbound_symbols, locals=None, globals=None):
         if symbol not in kwds:
             if locals is None or globals is None:
                 calling_frame = inspect.currentframe().f_back.f_back.f_back
-                if locals is None:
-                    locals = calling_frame.f_locals
-                if globals is None:
-                    globals = calling_frame.f_globals
+            if locals is None:
+                locals = calling_frame.f_locals
+            if globals is None:
+                globals = calling_frame.f_globals
             if symbol in locals:
                 kwds[symbol] = locals[symbol]
             elif symbol in globals:
@@ -186,7 +181,7 @@ def cython_inline(code, get_type=unsafe_type,
     if _unbound_symbols is not None:
         _populate_unbound(kwds, _unbound_symbols, locals, globals)
         args = sorted(kwds.items())
-        arg_sigs = tuple([(get_type(value, ctx), arg) for arg, value in args])
+        arg_sigs = tuple((get_type(value, ctx), arg) for arg, value in args)
         key_hash = _inline_key(code, arg_sigs, language_level)
         invoke = _cython_inline_cache.get((code, arg_sigs, key_hash))
         if invoke is not None:
@@ -215,10 +210,10 @@ def cython_inline(code, get_type=unsafe_type,
             cimports.append('\ncimport cython as %s' % name)
             del kwds[name]
     arg_names = sorted(kwds)
-    arg_sigs = tuple([(get_type(kwds[arg], ctx), arg) for arg in arg_names])
+    arg_sigs = tuple((get_type(kwds[arg], ctx), arg) for arg in arg_names)
     if key_hash is None:
         key_hash = _inline_key(orig_code, arg_sigs, language_level)
-    module_name = "_cython_inline_" + key_hash
+    module_name = f"_cython_inline_{key_hash}"
 
     if module_name in sys.modules:
         module = sys.modules[module_name]
@@ -240,8 +235,7 @@ def cython_inline(code, get_type=unsafe_type,
             c_include_dirs = []
             qualified = re.compile(r'([.\w]+)[.]')
             for type, _ in arg_sigs:
-                m = qualified.match(type)
-                if m:
+                if m := qualified.match(type):
                     cimports.append('\ncimport %s' % m.groups()[0])
                     # one special case
                     if m.groups()[0] == 'numpy':
@@ -263,7 +257,7 @@ def __invoke(%(params)s):
                    'func_body': func_body }
             for key, value in literals.items():
                 module_code = module_code.replace(key, value)
-            pyx_file = os.path.join(lib_dir, module_name + '.pyx')
+            pyx_file = os.path.join(lib_dir, f'{module_name}.pyx')
             fh = open(pyx_file, 'w')
             try:
                 fh.write(module_code)
@@ -330,10 +324,7 @@ def extract_func_code(code):
     lines = code.split('\n')
     for line in lines:
         if not line.startswith(' '):
-            if module_statement.match(line):
-                current = module
-            else:
-                current = function
+            current = module if module_statement.match(line) else function
         current.append(line)
     return '\n'.join(module), '    ' + '\n    '.join(function)
 
@@ -341,7 +332,7 @@ def extract_func_code(code):
 def get_body(source):
     ix = source.index(':')
     if source[:5] == 'lambda':
-        return "return %s" % source[ix+1:]
+        return f"return {source[ix + 1:]}"
     else:
         return source[ix+1:]
 

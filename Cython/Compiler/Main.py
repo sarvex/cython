@@ -37,9 +37,7 @@ from .Lexicon import (unicode_start_ch_any, unicode_continuation_ch_any,
 
 
 def _make_range_re(chrs):
-    out = []
-    for i in range(0, len(chrs), 2):
-        out.append(u"{0}-{1}".format(chrs[i], chrs[i+1]))
+    out = [u"{0}-{1}".format(chrs[i], chrs[i+1]) for i in range(0, len(chrs), 2)]
     return u"".join(out)
 
 # py2 version looked like r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$"
@@ -136,11 +134,10 @@ class Context(object):
             source = CompilationSource(source_desc, module_name, os.getcwd())
             result_sink = create_default_resultobj(source, self.options)
             pipeline = Pipeline.create_pyx_as_pxd_pipeline(self, result_sink)
-            result = Pipeline.run_pipeline(pipeline, source)
+            return Pipeline.run_pipeline(pipeline, source)
         else:
             pipeline = Pipeline.create_pxd_pipeline(self, scope, module_name)
-            result = Pipeline.run_pipeline(pipeline, source_desc)
-        return result
+            return Pipeline.run_pipeline(pipeline, source_desc)
 
     def nonfatal_error(self, exc):
         return Errors.report_error(exc)
@@ -155,9 +152,12 @@ class Context(object):
             # __init__.pyx/__init__.py file to determine if last part is package or not.
             is_package = False
             for suffix in ('.py', '.pyx'):
-                path = self.search_include_directories(
-                    qualified_name, suffix=suffix, source_pos=None, source_file_path=None)
-                if path:
+                if path := self.search_include_directories(
+                    qualified_name,
+                    suffix=suffix,
+                    source_pos=None,
+                    source_file_path=None,
+                ):
                     is_package = self._is_init_file(path)
                     break
 
@@ -179,8 +179,9 @@ class Context(object):
         # that module, provided its name is not a dotted name.
         debug_find_module = 0
         if debug_find_module:
-            print("Context.find_module: module_name = %s, relative_to = %s, pos = %s, need_pxd = %s" % (
-                module_name, relative_to, pos, need_pxd))
+            print(
+                f"Context.find_module: module_name = {module_name}, relative_to = {relative_to}, pos = {pos}, need_pxd = {need_pxd}"
+            )
 
         scope = None
         pxd_pathname = None
@@ -197,8 +198,10 @@ class Context(object):
             qualified_name = module_name
 
         if not module_name_pattern.match(qualified_name):
-            raise CompileError(pos or (module_name, 0, 0),
-                               u"'%s' is not a valid module name" % module_name)
+            raise CompileError(
+                pos or (module_name, 0, 0),
+                f"'{module_name}' is not a valid module name",
+            )
 
         if relative_to:
             if debug_find_module:
@@ -218,7 +221,7 @@ class Context(object):
             for name, is_package in self._split_qualified_name(qualified_name):
                 scope = scope.find_submodule(name, as_package=is_package)
         if debug_find_module:
-            print("...scope = %s" % scope)
+            print(f"...scope = {scope}")
         if not scope.pxd_file_loaded:
             if debug_find_module:
                 print("...pxd not loaded")
@@ -229,22 +232,22 @@ class Context(object):
                 # for a .pxd file.
                 pxd_pathname = self.find_pxd_file(qualified_name, pos, sys_path=need_pxd)
                 if debug_find_module:
-                    print("......found %s" % pxd_pathname)
-                if not pxd_pathname and need_pxd:
-                    # Set pxd_file_loaded such that we don't need to
-                    # look for the non-existing pxd file next time.
-                    scope.pxd_file_loaded = True
-                    package_pathname = self.search_include_directories(
-                        qualified_name, suffix=".py", source_pos=pos)
-                    if package_pathname and package_pathname.endswith(Utils.PACKAGE_FILES):
-                        pass
-                    else:
-                        error(pos, "'%s.pxd' not found" % qualified_name.replace('.', os.sep))
+                    print(f"......found {pxd_pathname}")
+            if not pxd_pathname and need_pxd:
+                # Set pxd_file_loaded such that we don't need to
+                # look for the non-existing pxd file next time.
+                scope.pxd_file_loaded = True
+                package_pathname = self.search_include_directories(
+                    qualified_name, suffix=".py", source_pos=pos)
+                if not package_pathname or not package_pathname.endswith(
+                    Utils.PACKAGE_FILES
+                ):
+                    error(pos, f"'{qualified_name.replace('.', os.sep)}.pxd' not found")
             if pxd_pathname:
                 scope.pxd_file_loaded = True
                 try:
                     if debug_find_module:
-                        print("Context.find_module: Parsing %s" % pxd_pathname)
+                        print(f"Context.find_module: Parsing {pxd_pathname}")
                     rel_path = module_name.replace('.', os.sep) + os.path.splitext(pxd_pathname)[1]
                     if not pxd_pathname.endswith(rel_path):
                         rel_path = pxd_pathname  # safety measure to prevent printing incorrect paths
@@ -285,7 +288,7 @@ class Context(object):
         path = self.search_include_directories(
             filename, source_pos=pos, include=True, source_file_path=source_file_path)
         if not path:
-            error(pos, "'%s' not found" % filename)
+            error(pos, f"'{filename}' not found")
         return path
 
     def search_include_directories(self, qualified_name,
@@ -444,19 +447,16 @@ class Context(object):
 
 
 def get_output_filename(source_filename, cwd, options):
-    if options.cplus:
-        c_suffix = ".cpp"
-    else:
-        c_suffix = ".c"
+    c_suffix = ".cpp" if options.cplus else ".c"
     suggested_file_name = Utils.replace_suffix(source_filename, c_suffix)
-    if options.output_file:
-        out_path = os.path.join(cwd, options.output_file)
-        if os.path.isdir(out_path):
-            return os.path.join(out_path, os.path.basename(suggested_file_name))
-        else:
-            return out_path
-    else:
+    if not options.output_file:
         return suggested_file_name
+    out_path = os.path.join(cwd, options.output_file)
+    return (
+        os.path.join(out_path, os.path.basename(suggested_file_name))
+        if os.path.isdir(out_path)
+        else out_path
+    )
 
 
 def create_default_resultobj(compilation_source, options):
@@ -506,7 +506,7 @@ def run_pipeline(source, options, full_module_name=None, context=None):
 
     if options.annotate is None:
         # By default, decide based on whether an html file already exists.
-        html_filename = os.path.splitext(result.c_file)[0] + ".html"
+        html_filename = f"{os.path.splitext(result.c_file)[0]}.html"
         if os.path.exists(html_filename):
             with io.open(html_filename, "r", encoding="UTF-8") as html_file:
                 if u'<!-- Generated by Cython' in html_file.read(100):
@@ -710,14 +710,14 @@ def search_include_directories(dirs, qualified_name, suffix="", pos=None, includ
                 if is_namespace:
                     namespace_dirs.append(package_dir)
                     continue
-                path = search_module_in_dir(package_dir, module_name, suffix)
-                if path:
+                if path := search_module_in_dir(
+                    package_dir, module_name, suffix
+                ):
                     return path
 
         # search for namespaces second - PEP420
         for package_dir in namespace_dirs:
-            path = search_module_in_dir(package_dir, module_name, suffix)
-            if path:
+            if path := search_module_in_dir(package_dir, module_name, suffix):
                 return path
 
     return None
@@ -757,7 +757,10 @@ def main(command_line = 0):
             if errno.ENOENT != e.errno:
                 # Raised IOError is not caused by missing file.
                 raise
-            print("{}: No such file or directory: '{}'".format(sys.argv[0], e.filename), file=sys.stderr)
+            print(
+                f"{sys.argv[0]}: No such file or directory: '{e.filename}'",
+                file=sys.stderr,
+            )
             sys.exit(1)
     else:
         options = CompilationOptions(default_options)

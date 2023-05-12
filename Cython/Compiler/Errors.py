@@ -46,8 +46,7 @@ def context(position):
     else:
         s = u''.join(F[max(0, position[1]-6):position[1]])
         s = u'...\n%s%s^\n' % (s, u' '*(position[2]))
-    s = u'%s\n%s%s\n' % (u'-'*60, s, u'-'*60)
-    return s
+    return u'%s\n%s%s\n' % (u'-'*60, s, u'-'*60)
 
 def format_position(position):
     if position:
@@ -88,26 +87,22 @@ class InternalError(Exception):
 
     def __init__(self, message):
         self.message_only = message
-        Exception.__init__(self, u"Internal compiler error: %s"
-            % message)
+        Exception.__init__(self, f"Internal compiler error: {message}")
 
 class AbortError(Exception):
     # Throw this to stop the compilation immediately.
 
     def __init__(self, message):
         self.message_only = message
-        Exception.__init__(self, u"Abort error: %s" % message)
+        Exception.__init__(self, f"Abort error: {message}")
 
 class CompilerCrash(CompileError):
     # raised when an unexpected exception occurs in a transform
     def __init__(self, pos, context, message, cause, stacktrace=None):
-        if message:
-            message = u'\n' + message
-        else:
-            message = u'\n'
+        message = u'\n' + message if message else u'\n'
         self.message_only = message
         if context:
-            message = u"Compiler crash in %s%s" % (context, message)
+            message = f"Compiler crash in {context}{message}"
         if stacktrace:
             import traceback
             message += (
@@ -116,7 +111,7 @@ class CompilerCrash(CompileError):
         if cause:
             if not stacktrace:
                 message += u'\n'
-            message += u'%s: %s' % (cause.__class__.__name__, cause)
+            message += f'{cause.__class__.__name__}: {cause}'
         CompileError.__init__(self, pos, message)
         # Python Exception subclass pickling is broken,
         # see https://bugs.python.org/issue1692335
@@ -134,10 +129,7 @@ def open_listing_file(path, echo_to_stderr=True):
         threadlocal.cython_errors_listing_file = open_new_file(path)
     else:
         threadlocal.cython_errors_listing_file = None
-    if echo_to_stderr:
-        threadlocal.cython_errors_echo_file = sys.stderr
-    else:
-        threadlocal.cython_errors_echo_file = None
+    threadlocal.cython_errors_echo_file = sys.stderr if echo_to_stderr else None
     threadlocal.cython_errors_count = 0
 
 def close_listing_file():
@@ -158,13 +150,11 @@ def report_error(err, use_stack=True):
             # Python <= 2.5 does this for non-ASCII Unicode exceptions
             line = format_error(getattr(err, 'message_only', "[unprintable exception message]"),
                                 getattr(err, 'position', None)) + u'\n'
-        listing_file = threadlocal.cython_errors_listing_file
-        if listing_file:
+        if listing_file := threadlocal.cython_errors_listing_file:
             try: listing_file.write(line)
             except UnicodeEncodeError:
                 listing_file.write(line.encode('ASCII', 'replace'))
-        echo_file = threadlocal.cython_errors_echo_file
-        if echo_file:
+        if echo_file := threadlocal.cython_errors_echo_file:
             try: echo_file.write(line)
             except UnicodeEncodeError:
                 echo_file.write(line.encode('ASCII', 'replace'))
@@ -196,11 +186,9 @@ def message(position, message, level=1):
         return
     warn = CompileWarning(position, message)
     line = u"note: %s\n" % warn
-    listing_file = threadlocal.cython_errors_listing_file
-    if listing_file:
+    if listing_file := threadlocal.cython_errors_listing_file:
         _write_file_encode(listing_file, line)
-    echo_file = threadlocal.cython_errors_echo_file
-    if echo_file:
+    if echo_file := threadlocal.cython_errors_echo_file:
         _write_file_encode(echo_file, line)
     return warn
 
@@ -212,11 +200,9 @@ def warning(position, message, level=0):
         return error(position, message)
     warn = CompileWarning(position, message)
     line = u"warning: %s\n" % warn
-    listing_file = threadlocal.cython_errors_listing_file
-    if listing_file:
+    if listing_file := threadlocal.cython_errors_listing_file:
         _write_file_encode(listing_file, line)
-    echo_file = threadlocal.cython_errors_echo_file
-    if echo_file:
+    if echo_file := threadlocal.cython_errors_echo_file:
         _write_file_encode(echo_file, line)
     return warn
 
@@ -229,11 +215,9 @@ def warn_once(position, message, level=0):
         return
     warn = CompileWarning(position, message)
     line = u"warning: %s\n" % warn
-    listing_file = threadlocal.cython_errors_listing_file
-    if listing_file:
+    if listing_file := threadlocal.cython_errors_listing_file:
         _write_file_encode(listing_file, line)
-    echo_file = threadlocal.cython_errors_echo_file
-    if echo_file:
+    if echo_file := threadlocal.cython_errors_echo_file:
         _write_file_encode(echo_file, line)
     warn_once_seen[message] = True
     return warn

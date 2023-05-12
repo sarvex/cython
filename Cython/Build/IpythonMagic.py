@@ -121,7 +121,7 @@ class CythonMagics(Magics):
             try:
                 self.shell.push({k: mdict[k]})
             except KeyError:
-                msg = "'module' object has no attribute '%s'" % k
+                msg = f"'module' object has no attribute '{k}'"
                 raise AttributeError(msg)
 
     @cell_magic
@@ -161,7 +161,7 @@ class CythonMagics(Magics):
         module_name = line.strip()
         if not module_name:
             raise ValueError('module name must be given')
-        fname = module_name + '.pyx'
+        fname = f'{module_name}.pyx'
         with io.open(fname, 'w', encoding='utf-8') as f:
             f.write(cell)
         if 'pyximport' not in sys.modules or not self._pyximport_installed:
@@ -314,15 +314,14 @@ class CythonMagics(Magics):
             module_name = str(args.name)  # no-op in Py3
         else:
             module_name = "_cython_magic_" + hashlib.sha1(str(key).encode('utf-8')).hexdigest()
-        html_file = os.path.join(lib_dir, module_name + '.html')
+        html_file = os.path.join(lib_dir, f'{module_name}.html')
         module_path = os.path.join(lib_dir, module_name + self.so_ext)
 
         have_module = os.path.isfile(module_path)
         need_cythonize = args.pgo or not have_module
 
-        if args.annotate:
-            if not os.path.isfile(html_file):
-                need_cythonize = True
+        if args.annotate and not os.path.isfile(html_file):
+            need_cythonize = True
 
         extension = None
         if need_cythonize:
@@ -385,8 +384,8 @@ class CythonMagics(Magics):
         """
         extension = copy.copy(extension)  # shallow copy, do not modify sources in place!
         module_name = extension.name
-        pgo_module_name = '_pgo_' + module_name
-        pgo_wrapper_c_file = os.path.join(lib_dir, pgo_module_name + '.c')
+        pgo_module_name = f'_pgo_{module_name}'
+        pgo_wrapper_c_file = os.path.join(lib_dir, f'{pgo_module_name}.c')
         with io.open(pgo_wrapper_c_file, 'w', encoding='utf-8') as f:
             f.write(textwrap.dedent(u"""
             #include "Python.h"
@@ -422,7 +421,7 @@ class CythonMagics(Magics):
         load_dynamic(pgo_module_name, so_module_path)
 
     def _cythonize(self, module_name, code, lib_dir, args, quiet=True):
-        pyx_file = os.path.join(lib_dir, module_name + '.pyx')
+        pyx_file = os.path.join(lib_dir, f'{module_name}.pyx')
         pyx_file = encode_fs(pyx_file)
 
         c_include_dirs = args.include
@@ -492,8 +491,10 @@ class CythonMagics(Magics):
                 extension.extra_compile_args = extension.extra_compile_args + flags
                 extension.extra_link_args = extension.extra_link_args + flags
         else:
-            print("No PGO %s configuration known for C compiler type '%s'" % (step_name, compiler_type),
-                  file=sys.stderr)
+            print(
+                f"No PGO {step_name} configuration known for C compiler type '{compiler_type}'",
+                file=sys.stderr,
+            )
         return orig_flags
 
     @property

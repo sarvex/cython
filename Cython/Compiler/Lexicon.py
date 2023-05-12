@@ -8,7 +8,7 @@ from __future__ import absolute_import, unicode_literals
 
 raw_prefixes = "rR"
 bytes_prefixes = "bB"
-string_prefixes = "fFuU" + bytes_prefixes
+string_prefixes = f"fFuU{bytes_prefixes}"
 char_prefixes = "cC"
 any_string_prefix = raw_prefixes + string_prefixes + char_prefixes
 IDENT = 'IDENT'

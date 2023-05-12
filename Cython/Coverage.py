@@ -190,14 +190,14 @@ class Plugin(CoveragePlugin):
         if ext in MODULE_FILE_EXTENSIONS:
             pass
         elif ext == '.pyd':
-            # Windows extension module
-            platform_suffix = re.search(r'[.]cp[0-9]+-win[_a-z0-9]*$', basename, re.I)
-            if platform_suffix:
+            if platform_suffix := re.search(
+                r'[.]cp[0-9]+-win[_a-z0-9]*$', basename, re.I
+            ):
                 basename = basename[:platform_suffix.start()]
         elif ext == '.so':
-            # Linux/Unix/Mac extension module
-            platform_suffix = re.search(r'[.](?:cpython|pypy)-[0-9]+[-_a-z0-9]*$', basename, re.I)
-            if platform_suffix:
+            if platform_suffix := re.search(
+                r'[.](?:cpython|pypy)-[0-9]+[-_a-z0-9]*$', basename, re.I
+            ):
                 basename = basename[:platform_suffix.start()]
         elif ext == '.pxi':
             # if we get here, it means that the first traced line of a Cython module was
@@ -221,7 +221,7 @@ class Plugin(CoveragePlugin):
 
         py_source_file = None
         if c_file:
-            py_source_file = os.path.splitext(c_file)[0] + '.py'
+            py_source_file = f'{os.path.splitext(c_file)[0]}.py'
             if not os.path.exists(py_source_file):
                 py_source_file = None
             if not is_cython_generated_file(c_file, if_not_found=False):
@@ -292,7 +292,11 @@ class Plugin(CoveragePlugin):
             r'(\s+[^:]+|)\s*:'
         ).match
         if self._excluded_line_patterns:
-            line_is_excluded = re.compile("|".join(["(?:%s)" % regex for regex in self._excluded_line_patterns])).search
+            line_is_excluded = re.compile(
+                "|".join(
+                    [f"(?:{regex})" for regex in self._excluded_line_patterns]
+                )
+            ).search
         else:
             line_is_excluded = lambda line: False
 
@@ -308,16 +312,14 @@ class Plugin(CoveragePlugin):
                 match = match_source_path_line(line)
                 if not match:
                     if '__Pyx_TraceLine(' in line and current_filename is not None:
-                        trace_line = match_trace_line(line)
-                        if trace_line:
+                        if trace_line := match_trace_line(line):
                             executable_lines[current_filename].add(int(trace_line.group(1)))
                     continue
                 filename, lineno = match.groups()
                 current_filename = filename
                 lineno = int(lineno)
                 for comment_line in lines:
-                    match = match_current_code_line(comment_line)
-                    if match:
+                    if match := match_current_code_line(comment_line):
                         code_line = match.group(1).rstrip()
                         if not_executable(code_line):
                             break
@@ -400,25 +402,22 @@ class CythonModuleReporter(FileReporter):
         return self._excluded_lines
 
     def _iter_source_tokens(self):
-        current_line = 1
-        for line_no, code_line in sorted(self._code.items()):
+        for current_line, (line_no, code_line) in enumerate(sorted(self._code.items()), start=1):
             while line_no > current_line:
                 yield []
                 current_line += 1
             yield [('txt', code_line)]
-            current_line += 1
 
     def source(self):
         """
         Return the source code of the file as a string.
         """
-        if os.path.exists(self.filename):
-            with open_source_file(self.filename) as f:
-                return f.read()
-        else:
+        if not os.path.exists(self.filename):
             return '\n'.join(
                 (tokens[0][1] if tokens else '')
                 for tokens in self._iter_source_tokens())
+        with open_source_file(self.filename) as f:
+            return f.read()
 
     def source_token_lines(self):
         """

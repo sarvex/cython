@@ -158,14 +158,18 @@ class ControlFlow(object):
                 entry.error_on_uninitialized)
 
     def is_statically_assigned(self, entry):
-        if (entry.is_local and entry.is_variable and
-                (entry.type.is_struct_or_union or
-                 entry.type.is_complex or
-                 entry.type.is_array or
-                 (entry.type.is_cpp_class and not entry.is_cpp_optional))):
-            # stack allocated structured variable => never uninitialised
-            return True
-        return False
+        return bool(
+            (
+                entry.is_local
+                and entry.is_variable
+                and (
+                    entry.type.is_struct_or_union
+                    or entry.type.is_complex
+                    or entry.type.is_array
+                    or (entry.type.is_cpp_class and not entry.is_cpp_optional)
+                )
+            )
+        )
 
     def mark_position(self, node):
         """Mark position, will be used to draw graph nodes."""
@@ -349,10 +353,7 @@ class NameAssignment(object):
 class StaticAssignment(NameAssignment):
     """Initialised at declaration time, e.g. stack allocation."""
     def __init__(self, entry):
-        if not entry.type.is_pyobject:
-            may_be_none = False
-        else:
-            may_be_none = None  # unknown
+        may_be_none = False if not entry.type.is_pyobject else None
         lhs = TypedExprNode(
             entry.type, may_be_none=may_be_none, pos=entry.pos)
         super(StaticAssignment, self).__init__(lhs, lhs, entry)
@@ -424,9 +425,8 @@ class ControlFlowState(list):
         elif Unknown in state:
             state.discard(Unknown)
             self.cf_maybe_null = True
-        else:
-            if len(state) == 1:
-                self.is_single = True
+        elif len(state) == 1:
+            self.is_single = True
         # XXX: Remove fake_rhs_expr
         super(ControlFlowState, self).__init__(
             [i for i in state if i.rhs is not fake_rhs_expr])

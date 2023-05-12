@@ -65,8 +65,8 @@ memviewslice_cname = u'__Pyx_memviewslice'
 
 
 def put_init_entry(mv_cname, code):
-    code.putln("%s.data = NULL;" % mv_cname)
-    code.putln("%s.memview = NULL;" % mv_cname)
+    code.putln(f"{mv_cname}.data = NULL;")
+    code.putln(f"{mv_cname}.memview = NULL;")
 
 
 #def axes_to_str(axes):
@@ -83,7 +83,7 @@ def put_acquire_memoryviewslice(lhs_cname, lhs_type, lhs_pos, rhs, code,
         rhstmp = rhs.result()
     else:
         rhstmp = code.funcstate.allocate_temp(lhs_type, manage_ref=False)
-        code.putln("%s = %s;" % (rhstmp, rhs.result_as(lhs_type)))
+        code.putln(f"{rhstmp} = {rhs.result_as(lhs_type)};")
 
     # Allow uninitialized assignment
     #code.putln(code.put_error_if_unbound(lhs_pos, rhs.entry))
@@ -109,7 +109,7 @@ def put_assign_to_memviewslice(lhs_cname, rhs, rhs_cname, memviewslicetype, code
     if not rhs.result_in_temp():
         rhs.make_owned_memoryviewslice(code)
 
-    code.putln("%s = %s;" % (lhs_cname, rhs_cname))
+    code.putln(f"{lhs_cname} = {rhs_cname};")
 
 
 def get_buf_flags(specs):
@@ -156,12 +156,10 @@ def valid_memslice_dtype(dtype, i=0):
         return False
 
     if dtype.is_struct and dtype.kind == 'struct':
-        for member in dtype.scope.var_entries:
-            if not valid_memslice_dtype(member.type):
-                return False
-
-        return True
-
+        return all(
+            valid_memslice_dtype(member.type)
+            for member in dtype.scope.var_entries
+        )
     return (
         dtype.is_error or
         # Pointers are not valid (yet)
@@ -185,7 +183,7 @@ class MemoryViewSliceBufferEntry(Buffer.BufferEntry):
         self.type = entry.type
         self.cname = entry.cname
 
-        self.buf_ptr = "%s.data" % self.cname
+        self.buf_ptr = f"{self.cname}.data"
 
         dtype = self.entry.type.dtype
         self.buf_ptr_type = PyrexTypes.CPtrType(dtype)
@@ -226,30 +224,26 @@ class MemoryViewSliceBufferEntry(Buffer.BufferEntry):
                 #       or (dtype **) arithmetic, we won't know which unless
                 #       we check suboffsets
                 code.globalstate.use_utility_code(memviewslice_index_helpers)
-                bufp = ('__pyx_memviewslice_index_full(%s, %s, %s, %s)' %
-                                            (bufp, index, stride, suboffset))
+                bufp = f'__pyx_memviewslice_index_full({bufp}, {index}, {stride}, {suboffset})'
 
             elif flag == "indirect":
-                bufp = "(%s + %s * %s)" % (bufp, index, stride)
-                bufp = ("(*((char **) %s) + %s)" % (bufp, suboffset))
+                bufp = f"({bufp} + {index} * {stride})"
+                bufp = f"(*((char **) {bufp}) + {suboffset})"
 
             elif flag == "indirect_contiguous":
                 # Note: we do char ** arithmetic
-                bufp = "(*((char **) %s + %s) + %s)" % (bufp, index, suboffset)
+                bufp = f"(*((char **) {bufp} + {index}) + {suboffset})"
 
             elif flag == "strided":
-                bufp = "(%s + %s * %s)" % (bufp, index, stride)
+                bufp = f"({bufp} + {index} * {stride})"
 
             else:
                 assert flag == 'contiguous', flag
-                bufp = '((char *) (((%s *) %s) + %s))' % (type_decl, bufp, index)
+                bufp = f'((char *) ((({type_decl} *) {bufp}) + {index}))'
 
             bufp = '( /* dim=%d */ %s )' % (dim, bufp)
 
-        if cast_result:
-            return "((%s *) %s)" % (type_decl, bufp)
-
-        return bufp
+        return f"(({type_decl} *) {bufp})" if cast_result else bufp
 
     def generate_buffer_slice_code(self, code, indices, dst, dst_type, have_gil,
                                    have_slices, directives):
@@ -277,7 +271,7 @@ class MemoryViewSliceBufferEntry(Buffer.BufferEntry):
             # create global temp variable at request
             if not suboffset_dim_temp:
                 suboffset_dim = code.funcstate.allocate_temp(PyrexTypes.c_int_type, manage_ref=False)
-                code.putln("%s = -1;" % suboffset_dim)
+                code.putln(f"{suboffset_dim} = -1;")
                 suboffset_dim_temp.append(suboffset_dim)
             return suboffset_dim_temp[0]
 
@@ -300,7 +294,7 @@ class MemoryViewSliceBufferEntry(Buffer.BufferEntry):
                 d = dict(locals())
                 for s in "start stop step".split():
                     idx = getattr(index, s)
-                    have_idx = d['have_' + s] = not idx.is_none
+                    have_idx = d[f'have_{s}'] = not idx.is_none
                     d[s] = idx.result() if have_idx else "0"
 
                 if not (d['have_start'] or d['have_stop'] or d['have_step']):
@@ -403,8 +397,9 @@ def get_is_contig_func_name(contig_type, ndim):
 def get_is_contig_utility(contig_type, ndim):
     assert contig_type in ('C', 'F')
     C = dict(context, ndim=ndim, contig_type=contig_type)
-    utility = load_memview_c_utility("MemviewSliceCheckContig", C, requires=[is_contig_utility])
-    return utility
+    return load_memview_c_utility(
+        "MemviewSliceCheckContig", C, requires=[is_contig_utility]
+    )
 
 
 def slice_iter(slice_type, slice_result, ndim, code, force_strided=False):
@@ -431,10 +426,11 @@ class ContigSliceIter(SliceIter):
 
         total_size = ' * '.join("%s.shape[%d]" % (self.slice_result, i)
                                 for i in range(self.ndim))
-        code.putln("Py_ssize_t __pyx_temp_extent = %s;" % total_size)
+        code.putln(f"Py_ssize_t __pyx_temp_extent = {total_size};")
         code.putln("Py_ssize_t __pyx_temp_idx;")
-        code.putln("%s *__pyx_temp_pointer = (%s *) %s.data;" % (
-            type_decl, type_decl, self.slice_result))
+        code.putln(
+            f"{type_decl} *__pyx_temp_pointer = ({type_decl} *) {self.slice_result}.data;"
+        )
         code.putln("for (__pyx_temp_idx = 0; "
                         "__pyx_temp_idx < __pyx_temp_extent; "
                         "__pyx_temp_idx++) {")
@@ -459,7 +455,7 @@ class StridedSliceIter(SliceIter):
             code.putln("char *__pyx_temp_pointer_%d;" % i)
             code.putln("Py_ssize_t __pyx_temp_idx_%d;" % i)
 
-        code.putln("__pyx_temp_pointer_0 = %s.data;" % self.slice_result)
+        code.putln(f"__pyx_temp_pointer_0 = {self.slice_result}.data;")
 
         for i in range(self.ndim):
             if i > 0:
@@ -481,13 +477,8 @@ class StridedSliceIter(SliceIter):
 
 
 def copy_c_or_fortran_cname(memview):
-    if memview.is_c_contig:
-        c_or_f = 'c'
-    else:
-        c_or_f = 'f'
-
-    return "__pyx_memoryview_copy_slice_%s_%s" % (
-            memview.specialization_suffix(), c_or_f)
+    c_or_f = 'c' if memview.is_c_contig else 'f'
+    return f"__pyx_memoryview_copy_slice_{memview.specialization_suffix()}_{c_or_f}"
 
 
 def get_copy_new_utility(pos, from_memview, to_memview):
@@ -539,10 +530,12 @@ def get_axes_specs(env, axes):
     cythonscope.load_cythonscope()
     viewscope = cythonscope.viewscope
 
-    access_specs = tuple([viewscope.lookup(name)
-                    for name in ('full', 'direct', 'ptr')])
-    packing_specs = tuple([viewscope.lookup(name)
-                    for name in ('contig', 'strided', 'follow')])
+    access_specs = tuple(
+        viewscope.lookup(name) for name in ('full', 'direct', 'ptr')
+    )
+    packing_specs = tuple(
+        viewscope.lookup(name) for name in ('contig', 'strided', 'follow')
+    )
 
     is_f_contig, is_c_contig = False, False
     default_access, default_packing = 'direct', 'strided'
@@ -597,7 +590,10 @@ def get_axes_specs(env, axes):
         else:
             is_f_contig = True
 
-            if contig_dim and not axes_specs[contig_dim - 1][0] in ('full', 'ptr'):
+            if contig_dim and axes_specs[contig_dim - 1][0] not in (
+                'full',
+                'ptr',
+            ):
                 raise CompileError(axes[contig_dim].pos,
                                    "Fortran contiguous specifier must follow an indirect dimension")
 
@@ -679,11 +675,10 @@ def get_mode(specs):
     elif is_f_contig:
         return 'fortran'
 
-    for access, packing in specs:
-        if access in ('ptr', 'full'):
-            return 'full'
-
-    return 'strided'
+    return next(
+        ('full' for access, packing in specs if access in ('ptr', 'full')),
+        'strided',
+    )
 
 view_constant_to_access_packing = {
     'generic':              ('full',   'strided'),
@@ -710,8 +705,7 @@ def validate_axes_specs(positions, specs, is_c_contig, is_f_contig):
 
     for idx, (pos, (access, packing)) in enumerate(zip(positions, specs)):
 
-        if not (access in access_specs and
-                packing in packing_specs):
+        if access not in access_specs or packing not in packing_specs:
             raise CompileError(pos, "Invalid axes specification.")
 
         if packing == 'strided':
@@ -728,7 +722,7 @@ def validate_axes_specs(positions, specs, is_c_contig, is_f_contig):
                 else:
                     dims = "dimension %d" % valid_contig_dims[0]
 
-                raise CompileError(pos, "Only %s may be contiguous and direct" % dims)
+                raise CompileError(pos, f"Only {dims} may be contiguous and direct")
 
             has_contig = access != 'ptr'
         elif packing == 'follow':
@@ -779,15 +773,13 @@ def _resolve_AttributeNode(env, node):
     for modname in modnames:
         mod = scope.lookup(modname)
         if not mod or not mod.as_module:
-            raise CompileError(
-                    node.pos, "undeclared name not builtin: %s" % modname)
+            raise CompileError(node.pos, f"undeclared name not builtin: {modname}")
         scope = mod.as_module
 
-    entry = scope.lookup(path[-1])
-    if not entry:
-        raise CompileError(node.pos, "No such attribute '%s'" % path[-1])
-
-    return entry
+    if entry := scope.lookup(path[-1]):
+        return entry
+    else:
+        raise CompileError(node.pos, f"No such attribute '{path[-1]}'")
 
 #
 ### Utility loading

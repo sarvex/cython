@@ -42,7 +42,7 @@ def find_package_base(path):
     base_dir, package_path = os.path.split(path)
     while is_package_dir(base_dir):
         base_dir, parent = os.path.split(base_dir)
-        package_path = '%s/%s' % (parent, package_path)
+        package_path = f'{parent}/{package_path}'
     return base_dir, package_path
 
 def cython_compile(path_pattern, options):
@@ -194,7 +194,7 @@ def parse_args_raw(parser, args):
     # some of them are in unknown
     for option in unknown:
         if option.startswith('-'):
-            parser.error("unknown option "+option)
+            parser.error(f"unknown option {option}")
         else:
             sources.append(option)
     del options.sources
@@ -237,7 +237,7 @@ def main(args=None):
         expanded_path = [os.path.abspath(p) for p in extended_iglob(path)]
         if not expanded_path:
             import sys
-            print("{}: No such file or directory: '{}'".format(sys.argv[0], path), file=sys.stderr)
+            print(f"{sys.argv[0]}: No such file or directory: '{path}'", file=sys.stderr)
             sys.exit(1)
         all_paths.extend(expanded_path)
     _cython_compile_files(all_paths, options)

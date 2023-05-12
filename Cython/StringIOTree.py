@@ -60,7 +60,11 @@ class StringIOTree(object):
     def empty(self):
         if self.stream.tell():
             return False
-        return all([child.empty() for child in self.prepended_children]) if self.prepended_children else True
+        return (
+            all(child.empty() for child in self.prepended_children)
+            if self.prepended_children
+            else True
+        )
 
     def getvalue(self):
         content = []
@@ -70,8 +74,7 @@ class StringIOTree(object):
     def _collect_in(self, target_list):
         for x in self.prepended_children:
             x._collect_in(target_list)
-        stream_content = self.stream.getvalue()
-        if stream_content:
+        if stream_content := self.stream.getvalue():
             target_list.append(stream_content)
 
     def copyto(self, target):
@@ -79,8 +82,7 @@ class StringIOTree(object):
         needs to happen."""
         for child in self.prepended_children:
             child.copyto(target)
-        stream_content = self.stream.getvalue()
-        if stream_content:
+        if stream_content := self.stream.getvalue():
             target.write(stream_content)
 
     def commit(self):

@@ -31,7 +31,7 @@ class TestCyCache(CythonTest):
         content1 = 'value = 1\n'
         content2 = 'value = 2\n'
         a_pyx = os.path.join(self.src_dir, 'a.pyx')
-        a_c = a_pyx[:-4] + '.c'
+        a_c = f'{a_pyx[:-4]}.c'
 
         with open(a_pyx, 'w') as f:
             f.write(content1)
@@ -65,7 +65,7 @@ class TestCyCache(CythonTest):
 
     def test_cycache_uses_cache(self):
         a_pyx = os.path.join(self.src_dir, 'a.pyx')
-        a_c = a_pyx[:-4] + '.c'
+        a_c = f'{a_pyx[:-4]}.c'
         with open(a_pyx, 'w') as f:
             f.write('pass')
         self.fresh_cythonize(a_pyx, cache=self.cache_dir)
@@ -75,14 +75,15 @@ class TestCyCache(CythonTest):
         self.fresh_cythonize(a_pyx, cache=self.cache_dir)
         with open(a_c) as f:
             a_contents = f.read()
-        self.assertEqual(a_contents, 'fake stuff',
-                         'Unexpected contents: %s...' % a_contents[:100])
+        self.assertEqual(
+            a_contents, 'fake stuff', f'Unexpected contents: {a_contents[:100]}...'
+        )
 
     def test_multi_file_output(self):
         a_pyx = os.path.join(self.src_dir, 'a.pyx')
-        a_c = a_pyx[:-4] + '.c'
-        a_h = a_pyx[:-4] + '.h'
-        a_api_h = a_pyx[:-4] + '_api.h'
+        a_c = f'{a_pyx[:-4]}.c'
+        a_h = f'{a_pyx[:-4]}.h'
+        a_api_h = f'{a_pyx[:-4]}_api.h'
         with open(a_pyx, 'w') as f:
             f.write('cdef public api int foo(int x): return x\n')
         self.fresh_cythonize(a_pyx, cache=self.cache_dir)

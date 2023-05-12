@@ -28,13 +28,10 @@ class NodeTypeWriter(TreeVisitor):
             name = u"(root)"
         else:
             tip = self.access_path[-1]
-            if tip[2] is not None:
-                name = u"%s[%d]" % tip[1:3]
-            else:
-                name = tip[1]
-
-        self.result.append(u"  " * self._indents +
-                           u"%s: %s" % (name, node.__class__.__name__))
+            name = u"%s[%d]" % tip[1:3] if tip[2] is not None else tip[1]
+        self.result.append(
+            (u"  " * self._indents + f"{name}: {node.__class__.__name__}")
+        )
         self._indents += 1
         self.visitchildren(node)
         self._indents -= 1
@@ -90,8 +87,11 @@ class CythonTest(unittest.TestCase):
                          "Unmatched lines. Got:\n%s\nExpected:\n%s" % ("\n".join(result_lines), expected))
 
     def assertNodeExists(self, path, result_tree):
-        self.assertNotEqual(TreePath.find_first(result_tree, path), None,
-                            "Path '%s' not found in result tree" % path)
+        self.assertNotEqual(
+            TreePath.find_first(result_tree, path),
+            None,
+            f"Path '{path}' not found in result tree",
+        )
 
     def fragment(self, code, pxds=None, pipeline=None):
         "Simply create a tree fragment using the name of the test-case in parse errors."
@@ -206,11 +206,10 @@ class TreeAssertVisitor(VisitorTransform):
         patterns, antipatterns = self._c_patterns, self._c_antipatterns
 
         def fail(pos, pattern, found, file_path):
-            Errors.error(pos, "Pattern '%s' %s found in %s" %(
-                pattern,
-                'was' if found else 'was not',
-                file_path,
-            ))
+            Errors.error(
+                pos,
+                f"Pattern '{pattern}' {'was' if found else 'was not'} found in {file_path}",
+            )
 
         def validate_file_content(file_path, content):
             for pattern in patterns:
@@ -234,7 +233,7 @@ class TreeAssertVisitor(VisitorTransform):
             content = _strip_c_comments(content)
             validate_file_content(c_file, content)
 
-            html_file = os.path.splitext(c_file)[0] + ".html"
+            html_file = f"{os.path.splitext(c_file)[0]}.html"
             if os.path.exists(html_file) and os.path.getmtime(c_file) <= os.path.getmtime(html_file):
                 with open(html_file, encoding='utf8') as f:
                     content = f.read()
@@ -248,16 +247,12 @@ class TreeAssertVisitor(VisitorTransform):
         if 'test_assert_path_exists' in directives:
             for path in directives['test_assert_path_exists']:
                 if TreePath.find_first(node, path) is None:
-                    Errors.error(
-                        node.pos,
-                        "Expected path '%s' not found in result tree" % path)
+                    Errors.error(node.pos, f"Expected path '{path}' not found in result tree")
         if 'test_fail_if_path_exists' in directives:
             for path in directives['test_fail_if_path_exists']:
                 first_node = TreePath.find_first(node, path)
                 if first_node is not None:
-                    Errors.error(
-                        first_node.pos,
-                        "Unexpected path '%s' found in result tree" % path)
+                    Errors.error(first_node.pos, f"Unexpected path '{path}' found in result tree")
         if 'test_assert_c_code_has' in directives:
             self._c_patterns.extend(directives['test_assert_c_code_has'])
         if 'test_fail_if_c_code_has' in directives:

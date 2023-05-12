@@ -281,10 +281,7 @@ class FusedCFuncDefNode(StatListNode):
                                        copied_node.local_scope)
         transform(copied_node)
 
-        if Errors.get_errors_count() > num_errors:
-            return False
-
-        return True
+        return Errors.get_errors_count() <= num_errors
 
     def _fused_instance_checks(self, normal_types, pyx_code, env):
         """
@@ -304,20 +301,16 @@ class FusedCFuncDefNode(StatListNode):
                 """)
 
     def _dtype_name(self, dtype):
-        if dtype.is_typedef:
-            return '___pyx_%s' % dtype
-        return str(dtype).replace(' ', '_')
+        return f'___pyx_{dtype}' if dtype.is_typedef else str(dtype).replace(' ', '_')
 
     def _dtype_type(self, dtype):
-        if dtype.is_typedef:
-            return self._dtype_name(dtype)
-        return str(dtype)
+        return self._dtype_name(dtype) if dtype.is_typedef else str(dtype)
 
     def _sizeof_dtype(self, dtype):
         if dtype.is_pyobject:
             return 'sizeof(void *)'
         else:
-            return "sizeof(%s)" % self._dtype_type(dtype)
+            return f"sizeof({self._dtype_type(dtype)})"
 
     def _buffer_check_numpy_dtype_setup_cases(self, pyx_code):
         "Setup some common cases to match dtypes against specializations"
@@ -351,10 +344,11 @@ class FusedCFuncDefNode(StatListNode):
                 specialized_type = specialized_type.org_buffer
             dtype = specialized_type.dtype
             pyx_code.context.update(
-                itemsize_match=self._sizeof_dtype(dtype) + " == itemsize",
-                signed_match="not (%s_is_signed ^ dtype_signed)" % self._dtype_name(dtype),
+                itemsize_match=f"{self._sizeof_dtype(dtype)} == itemsize",
+                signed_match=f"not ({self._dtype_name(dtype)}_is_signed ^ dtype_signed)",
                 dtype=dtype,
-                specialized_type_name=final_type.specialization_string)
+                specialized_type_name=final_type.specialization_string,
+            )
 
             dtypes = [
                 (dtype.is_int, pyx_code.dtype_int),
@@ -372,7 +366,7 @@ class FusedCFuncDefNode(StatListNode):
                     if final_type.is_pythran_expr:
                         cond += ' and arg_is_pythran_compatible'
 
-                    with codewriter.indenter("if %s:" % cond):
+                    with codewriter.indenter(f"if {cond}:"):
                         #codewriter.putln("print 'buffer match found based on numpy dtype'")
                         codewriter.putln(self.match)
                         codewriter.putln("break")
@@ -567,20 +561,18 @@ class FusedCFuncDefNode(StatListNode):
         for buffer_type in all_buffer_types:
             dtype = buffer_type.dtype
             dtype_name = self._dtype_name(dtype)
-            if dtype.is_typedef:
-                if dtype_name not in seen_typedefs:
-                    seen_typedefs.add(dtype_name)
-                    decl_code.putln(
-                        'ctypedef %s %s "%s"' % (dtype.resolve(), dtype_name,
-                                                 dtype.empty_declaration_code()))
+            if dtype.is_typedef and dtype_name not in seen_typedefs:
+                seen_typedefs.add(dtype_name)
+                decl_code.putln(
+                    f'ctypedef {dtype.resolve()} {dtype_name} "{dtype.empty_declaration_code()}"'
+                )
 
-            if buffer_type.dtype.is_int:
-                if str(dtype) not in seen_int_dtypes:
-                    seen_int_dtypes.add(str(dtype))
-                    pyx_code.context.update(dtype_name=dtype_name,
-                                            dtype_type=self._dtype_type(dtype))
-                    pyx_code.local_variable_declarations.put_chunk(
-                        u"""
+            if buffer_type.dtype.is_int and str(dtype) not in seen_int_dtypes:
+                seen_int_dtypes.add(str(dtype))
+                pyx_code.context.update(dtype_name=dtype_name,
+                                        dtype_type=self._dtype_type(dtype))
+                pyx_code.local_variable_declarations.put_chunk(
+                    u"""
                             cdef bint {{dtype_name}}_is_signed
                             {{dtype_name}}_is_signed = not (<{{dtype_type}}> -1 > 0)
                         """)
@@ -598,8 +590,7 @@ class FusedCFuncDefNode(StatListNode):
         normal_types, buffer_types, pythran_types = [], [], []
         has_object_fallback = False
         for specialized_type in specialized_types:
-            py_type_name = specialized_type.py_type_name()
-            if py_type_name:
+            if py_type_name := specialized_type.py_type_name():
                 if py_type_name in seen_py_type_names:
                     continue
                 seen_py_type_names.add(py_type_name)
@@ -948,7 +939,7 @@ class FusedCFuncDefNode(StatListNode):
 
         from . import Options
         for stat in self.stats:
-            from_pyx = Options.cimport_from_pyx and not stat.entry.visibility == 'extern'
+            from_pyx = Options.cimport_from_pyx and stat.entry.visibility != 'extern'
             if isinstance(stat, FuncDefNode) and (stat.entry.used or from_pyx):
                 code.mark_pos(stat.pos)
                 stat.generate_function_definitions(env, code)
@@ -975,9 +966,8 @@ class FusedCFuncDefNode(StatListNode):
             self.resulting_fused_function.generate_evaluation_code(code)
 
             code.putln(
-                "((__pyx_FusedFunctionObject *) %s)->__signatures__ = %s;" %
-                                    (self.resulting_fused_function.result(),
-                                     self.__signatures__.result()))
+                f"((__pyx_FusedFunctionObject *) {self.resulting_fused_function.result()})->__signatures__ = {self.__signatures__.result()};"
+            )
             self.__signatures__.generate_giveref(code)
             self.__signatures__.generate_post_assignment_code(code)
             self.__signatures__.free_temps(code)

@@ -47,7 +47,7 @@ class ParseCompileTimeEnvAction(Action):
 class ActivateAllWarningsAction(Action):
     def __call__(self, parser, namespace, values, option_string=None):
         directives = getattr(namespace, 'compiler_directives', {})
-        directives.update(Options.extra_warnings)
+        directives |= Options.extra_warnings
         namespace.compiler_directives = directives
 
 
@@ -171,7 +171,7 @@ def create_cython_argparser():
     for name in vars(DebugFlags):
         if name.startswith("debug"):
             option_name = name.replace('_', '-')
-            parser.add_argument("--" + option_name, action='store_true', help=SUPPRESS)
+            parser.add_argument(f"--{option_name}", action='store_true', help=SUPPRESS)
 
     return parser
 
@@ -197,16 +197,13 @@ def parse_command_line_raw(parser, args):
     # unknown can be either debug, embed or input files or really unknown
     for option in unknown:
         if option.startswith('-'):
-            parser.error("unknown option " + option)
+            parser.error(f"unknown option {option}")
         else:
             sources.append(option)
 
     # embed-stuff must be handled extra:
     for x in with_embed:
-        if x == '--embed':
-            name = 'main'  # default value
-        else:
-            name = x[len('--embed='):]
+        name = 'main' if x == '--embed' else x[len('--embed='):]
         setattr(arguments, 'embed', name)
 
     return arguments, sources

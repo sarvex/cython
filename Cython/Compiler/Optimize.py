@@ -49,9 +49,7 @@ def load_c_utility(name):
 
 
 def unwrap_coerced_node(node, coercion_nodes=(ExprNodes.CoerceToPyTypeNode, ExprNodes.CoerceFromPyTypeNode)):
-    if isinstance(node, coercion_nodes):
-        return node.arg
-    return node
+    return node.arg if isinstance(node, coercion_nodes) else node
 
 
 def unwrap_node(node):
@@ -71,9 +69,7 @@ def is_common_value(a, b):
 
 
 def filter_none_node(node):
-    if node is not None and node.constant_result is None:
-        return None
-    return node
+    return None if node is not None and node.constant_result is None else node
 
 
 class _YieldNodeCollector(Visitor.TreeVisitor):
@@ -110,9 +106,7 @@ class _YieldNodeCollector(Visitor.TreeVisitor):
 
 def _find_single_yield_expression(node):
     yield_statements = _find_yield_statements(node)
-    if len(yield_statements) != 1:
-        return None, None
-    return yield_statements[0]
+    return (None, None) if len(yield_statements) != 1 else yield_statements[0]
 
 
 def _find_yield_statements(node):

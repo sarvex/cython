@@ -44,9 +44,9 @@ pxd_include_dirs = [
     if '__init__.pyx' in files or '__init__.pxd' in files
     or directory == os.path.join('Cython', 'Includes')]
 
-pxd_include_patterns = [
-    p+'/*.pxd' for p in pxd_include_dirs ] + [
-    p+'/*.pyx' for p in pxd_include_dirs ]
+pxd_include_patterns = [f'{p}/*.pxd' for p in pxd_include_dirs] + [
+    f'{p}/*.pyx' for p in pxd_include_dirs
+]
 
 setup_args['package_data'] = {
     'Cython.Plex'     : ['*.pxd'],
@@ -72,11 +72,10 @@ if 'setuptools' in sys.modules:
         ]
     }
     scripts = []
+elif os.name == "posix":
+    scripts = ["bin/cython", "bin/cythonize", "bin/cygdb"]
 else:
-    if os.name == "posix":
-        scripts = ["bin/cython", "bin/cythonize", "bin/cygdb"]
-    else:
-        scripts = ["cython.py", "cythonize.py", "cygdb.py"]
+    scripts = ["cython.py", "cythonize.py", "cygdb.py"]
 
 
 def compile_cython_modules(profile=False, coverage=False, compile_minimal=False, compile_more=False, cython_with_refnanny=False):
@@ -115,11 +114,15 @@ def compile_cython_modules(profile=False, coverage=False, compile_minimal=False,
 
     from distutils.spawn import find_executable
     from distutils.sysconfig import get_python_inc
-    pgen = find_executable(
-        'pgen', os.pathsep.join([os.environ['PATH'], os.path.join(get_python_inc(), '..', 'Parser')]))
-    if not pgen:
-        sys.stderr.write("Unable to find pgen, not compiling formal grammar.\n")
-    else:
+    if pgen := find_executable(
+        'pgen',
+        os.pathsep.join(
+            [
+                os.environ['PATH'],
+                os.path.join(get_python_inc(), '..', 'Parser'),
+            ]
+        ),
+    ):
         parser_dir = os.path.join(os.path.dirname(__file__), 'Cython', 'Parser')
         grammar = os.path.join(parser_dir, 'Grammar')
         subprocess.check_call([
@@ -136,6 +139,8 @@ def compile_cython_modules(profile=False, coverage=False, compile_minimal=False,
                 "Cython.Parser.ConcreteSyntaxTree",
             ])
 
+    else:
+        sys.stderr.write("Unable to find pgen, not compiling formal grammar.\n")
     defines = []
     if cython_with_refnanny:
         defines.append(('CYTHON_REFNANNY', '1'))
@@ -145,13 +150,13 @@ def compile_cython_modules(profile=False, coverage=False, compile_minimal=False,
     extensions = []
     for module in compiled_modules:
         source_file = os.path.join(source_root, *module.split('.'))
-        pyx_source_file = source_file + ".py"
+        pyx_source_file = f"{source_file}.py"
         if not os.path.exists(pyx_source_file):
             pyx_source_file += "x"  # .py -> .pyx
 
         dep_files = []
-        if os.path.exists(source_file + '.pxd'):
-            dep_files.append(source_file + '.pxd')
+        if os.path.exists(f'{source_file}.pxd'):
+            dep_files.append(f'{source_file}.pxd')
 
         extensions.append(Extension(
             module, sources=[pyx_source_file],
@@ -184,16 +189,13 @@ def compile_cython_modules(profile=False, coverage=False, compile_minimal=False,
 
 
 def check_option(name):
-    cli_arg = "--" + name
+    cli_arg = f"--{name}"
     if cli_arg in sys.argv:
         sys.argv.remove(cli_arg)
         return True
 
     env_var = name.replace("-", "_").upper()
-    if os.environ.get(env_var) == "true":
-        return True
-
-    return False
+    return os.environ.get(env_var) == "true"
 
 
 cython_profile = check_option('cython-profile')

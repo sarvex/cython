@@ -113,140 +113,321 @@ class BuiltinProperty(object):
         )
 
 
-builtin_function_table = [
-    # name,        args,   return,  C API func,           py equiv = "*"
-    BuiltinFunction('abs',        "d",    "d",     "fabs",
-                    is_strict_signature=True, nogil=True),
-    BuiltinFunction('abs',        "f",    "f",     "fabsf",
-                    is_strict_signature=True, nogil=True),
-    BuiltinFunction('abs',        "i",    "i",     "abs",
-                    is_strict_signature=True, nogil=True),
-    BuiltinFunction('abs',        "l",    "l",     "labs",
-                    is_strict_signature=True, nogil=True),
-    BuiltinFunction('abs',        None,    None,   "__Pyx_abs_longlong",
-                utility_code = UtilityCode.load("abs_longlong", "Builtins.c"),
-                func_type = PyrexTypes.CFuncType(
-                    PyrexTypes.c_longlong_type, [
-                        PyrexTypes.CFuncTypeArg("arg", PyrexTypes.c_longlong_type, None)
-                        ],
-                    is_strict_signature = True, nogil=True)),
-    ] + list(
-        BuiltinFunction('abs',        None,    None,   "/*abs_{0}*/".format(t.specialization_name()),
-                    func_type = PyrexTypes.CFuncType(
-                        t,
-                        [PyrexTypes.CFuncTypeArg("arg", t, None)],
-                        is_strict_signature = True, nogil=True))
-                            for t in (PyrexTypes.c_uint_type, PyrexTypes.c_ulong_type, PyrexTypes.c_ulonglong_type)
-             ) + list(
-        BuiltinFunction('abs',        None,    None,   "__Pyx_c_abs{0}".format(t.funcsuffix),
-                    func_type = PyrexTypes.CFuncType(
-                        t.real_type, [
-                            PyrexTypes.CFuncTypeArg("arg", t, None)
-                            ],
-                            is_strict_signature = True, nogil=True))
-                        for t in (PyrexTypes.c_float_complex_type,
-                                  PyrexTypes.c_double_complex_type,
-                                  PyrexTypes.c_longdouble_complex_type)
-                        ) + [
-    BuiltinFunction('abs',        "O",    "O",     "__Pyx_PyNumber_Absolute",
-                    utility_code=UtilityCode.load("py_abs", "Builtins.c")),
-    #('all',       "",     "",      ""),
-    #('any',       "",     "",      ""),
-    #('ascii',     "",     "",      ""),
-    #('bin',       "",     "",      ""),
-    BuiltinFunction('callable',   "O",    "b",     "__Pyx_PyCallable_Check",
-                    utility_code = UtilityCode.load("CallableCheck", "ObjectHandling.c")),
-    #('chr',       "",     "",      ""),
-    #('cmp', "",   "",     "",      ""), # int PyObject_Cmp(PyObject *o1, PyObject *o2, int *result)
-    #('compile',   "",     "",      ""), # PyObject* Py_CompileString(    char *str, char *filename, int start)
-    BuiltinFunction('delattr',    "OO",   "r",     "PyObject_DelAttr"),
-    BuiltinFunction('dir',        "O",    "O",     "PyObject_Dir"),
-    BuiltinFunction('divmod',     "OO",   "O",     "PyNumber_Divmod"),
-    BuiltinFunction('exec',       "O",    "O",     "__Pyx_PyExecGlobals",
-                    utility_code = pyexec_globals_utility_code),
-    BuiltinFunction('exec',       "OO",   "O",     "__Pyx_PyExec2",
-                    utility_code = pyexec_utility_code),
-    BuiltinFunction('exec',       "OOO",  "O",     "__Pyx_PyExec3",
-                    utility_code = pyexec_utility_code),
-    #('eval',      "",     "",      ""),
-    #('execfile',  "",     "",      ""),
-    #('filter',    "",     "",      ""),
-    BuiltinFunction('getattr3',   "OOO",  "O",     "__Pyx_GetAttr3",     "getattr",
-                    utility_code=getattr3_utility_code),  # Pyrex legacy
-    BuiltinFunction('getattr',    "OOO",  "O",     "__Pyx_GetAttr3",
-                    utility_code=getattr3_utility_code),
-    BuiltinFunction('getattr',    "OO",   "O",     "__Pyx_GetAttr",
-                    utility_code=getattr_utility_code),
-    BuiltinFunction('hasattr',    "OO",   "b",     "__Pyx_HasAttr",
-                    utility_code = UtilityCode.load("HasAttr", "Builtins.c")),
-    BuiltinFunction('hash',       "O",    "h",     "PyObject_Hash"),
-    #('hex',       "",     "",      ""),
-    #('id',        "",     "",      ""),
-    #('input',     "",     "",      ""),
-    BuiltinFunction('intern',     "O",    "O",     "__Pyx_Intern",
-                    utility_code = UtilityCode.load("Intern", "Builtins.c")),
-    BuiltinFunction('isinstance', "OO",   "b",     "PyObject_IsInstance"),
-    BuiltinFunction('issubclass', "OO",   "b",     "PyObject_IsSubclass"),
-    BuiltinFunction('iter',       "OO",   "O",     "PyCallIter_New"),
-    BuiltinFunction('iter',       "O",    "O",     "PyObject_GetIter"),
-    BuiltinFunction('len',        "O",    "z",     "PyObject_Length"),
-    BuiltinFunction('locals',     "",     "O",     "__pyx_locals"),
-    #('map',       "",     "",      ""),
-    #('max',       "",     "",      ""),
-    #('min',       "",     "",      ""),
-    BuiltinFunction('next',       "O",    "O",     "__Pyx_PyIter_Next",
-                    utility_code = iter_next_utility_code),   # not available in Py2 => implemented here
-    BuiltinFunction('next',      "OO",    "O",     "__Pyx_PyIter_Next2",
-                    utility_code = iter_next_utility_code),  # not available in Py2 => implemented here
-    #('oct',       "",     "",      ""),
-    #('open',       "ss",   "O",     "PyFile_FromString"),   # not in Py3
-] + [
-    BuiltinFunction('ord',        None,    None,   "__Pyx_long_cast",
-                    func_type=PyrexTypes.CFuncType(
-                        PyrexTypes.c_long_type, [PyrexTypes.CFuncTypeArg("c", c_type, None)],
-                        is_strict_signature=True))
-    for c_type in [PyrexTypes.c_py_ucs4_type, PyrexTypes.c_py_unicode_type]
-] + [
-    BuiltinFunction('ord',        None,    None,   "__Pyx_uchar_cast",
-                    func_type=PyrexTypes.CFuncType(
-                        PyrexTypes.c_uchar_type, [PyrexTypes.CFuncTypeArg("c", c_type, None)],
-                        is_strict_signature=True))
-    for c_type in [PyrexTypes.c_char_type, PyrexTypes.c_schar_type, PyrexTypes.c_uchar_type]
-] + [
-    BuiltinFunction('ord',        None,    None,   "__Pyx_PyObject_Ord",
-                    utility_code=UtilityCode.load_cached("object_ord", "Builtins.c"),
-                    func_type=PyrexTypes.CFuncType(
-                        PyrexTypes.c_long_type, [
-                            PyrexTypes.CFuncTypeArg("c", PyrexTypes.py_object_type, None)
-                        ],
-                        exception_value="(long)(Py_UCS4)-1")),
-    BuiltinFunction('pow',        "OOO",  "O",     "PyNumber_Power"),
-    BuiltinFunction('pow',        "OO",   "O",     "__Pyx_PyNumber_Power2",
-                    utility_code = UtilityCode.load("pow2", "Builtins.c")),
-    #('range',     "",     "",      ""),
-    #('raw_input', "",     "",      ""),
-    #('reduce',    "",     "",      ""),
-    BuiltinFunction('reload',     "O",    "O",     "PyImport_ReloadModule"),
-    BuiltinFunction('repr',       "O",    "O",     "PyObject_Repr"),  # , builtin_return_type='str'),  # add in Cython 3.1
-    #('round',     "",     "",      ""),
-    BuiltinFunction('setattr',    "OOO",  "r",     "PyObject_SetAttr"),
-    #('sum',       "",     "",      ""),
-    #('sorted',    "",     "",      ""),
-    #('type',       "O",    "O",     "PyObject_Type"),
-    BuiltinFunction('unichr',     "l",    "O",      "PyUnicode_FromOrdinal", builtin_return_type='unicode'),
-    #('unicode',   "",     "",      ""),
-    #('vars',      "",     "",      ""),
-    #('zip',       "",     "",      ""),
+builtin_function_table = (
+    (
+        (
+            (
+                (
+                    [
+                        # name,        args,   return,  C API func,           py equiv = "*"
+                        BuiltinFunction(
+                            'abs',
+                            "d",
+                            "d",
+                            "fabs",
+                            is_strict_signature=True,
+                            nogil=True,
+                        ),
+                        BuiltinFunction(
+                            'abs',
+                            "f",
+                            "f",
+                            "fabsf",
+                            is_strict_signature=True,
+                            nogil=True,
+                        ),
+                        BuiltinFunction(
+                            'abs',
+                            "i",
+                            "i",
+                            "abs",
+                            is_strict_signature=True,
+                            nogil=True,
+                        ),
+                        BuiltinFunction(
+                            'abs',
+                            "l",
+                            "l",
+                            "labs",
+                            is_strict_signature=True,
+                            nogil=True,
+                        ),
+                        BuiltinFunction(
+                            'abs',
+                            None,
+                            None,
+                            "__Pyx_abs_longlong",
+                            utility_code=UtilityCode.load(
+                                "abs_longlong", "Builtins.c"
+                            ),
+                            func_type=PyrexTypes.CFuncType(
+                                PyrexTypes.c_longlong_type,
+                                [
+                                    PyrexTypes.CFuncTypeArg(
+                                        "arg", PyrexTypes.c_longlong_type, None
+                                    )
+                                ],
+                                is_strict_signature=True,
+                                nogil=True,
+                            ),
+                        ),
+                    ]
+                    + [
+                        BuiltinFunction(
+                            'abs',
+                            None,
+                            None,
+                            "/*abs_{0}*/".format(t.specialization_name()),
+                            func_type=PyrexTypes.CFuncType(
+                                t,
+                                [PyrexTypes.CFuncTypeArg("arg", t, None)],
+                                is_strict_signature=True,
+                                nogil=True,
+                            ),
+                        )
+                        for t in (
+                            PyrexTypes.c_uint_type,
+                            PyrexTypes.c_ulong_type,
+                            PyrexTypes.c_ulonglong_type,
+                        )
+                    ]
+                )
+                + [
+                    BuiltinFunction(
+                        'abs',
+                        None,
+                        None,
+                        "__Pyx_c_abs{0}".format(t.funcsuffix),
+                        func_type=PyrexTypes.CFuncType(
+                            t.real_type,
+                            [PyrexTypes.CFuncTypeArg("arg", t, None)],
+                            is_strict_signature=True,
+                            nogil=True,
+                        ),
+                    )
+                    for t in (
+                        PyrexTypes.c_float_complex_type,
+                        PyrexTypes.c_double_complex_type,
+                        PyrexTypes.c_longdouble_complex_type,
+                    )
+                ]
+            )
+            + [
+                BuiltinFunction(
+                    'abs',
+                    "O",
+                    "O",
+                    "__Pyx_PyNumber_Absolute",
+                    utility_code=UtilityCode.load("py_abs", "Builtins.c"),
+                ),
+                # ('all',       "",     "",      ""),
+                # ('any',       "",     "",      ""),
+                # ('ascii',     "",     "",      ""),
+                # ('bin',       "",     "",      ""),
+                BuiltinFunction(
+                    'callable',
+                    "O",
+                    "b",
+                    "__Pyx_PyCallable_Check",
+                    utility_code=UtilityCode.load(
+                        "CallableCheck", "ObjectHandling.c"
+                    ),
+                ),
+                # ('chr',       "",     "",      ""),
+                # ('cmp', "",   "",     "",      ""), # int PyObject_Cmp(PyObject *o1, PyObject *o2, int *result)
+                # ('compile',   "",     "",      ""), # PyObject* Py_CompileString(    char *str, char *filename, int start)
+                BuiltinFunction('delattr', "OO", "r", "PyObject_DelAttr"),
+                BuiltinFunction('dir', "O", "O", "PyObject_Dir"),
+                BuiltinFunction('divmod', "OO", "O", "PyNumber_Divmod"),
+                BuiltinFunction(
+                    'exec',
+                    "O",
+                    "O",
+                    "__Pyx_PyExecGlobals",
+                    utility_code=pyexec_globals_utility_code,
+                ),
+                BuiltinFunction(
+                    'exec',
+                    "OO",
+                    "O",
+                    "__Pyx_PyExec2",
+                    utility_code=pyexec_utility_code,
+                ),
+                BuiltinFunction(
+                    'exec',
+                    "OOO",
+                    "O",
+                    "__Pyx_PyExec3",
+                    utility_code=pyexec_utility_code,
+                ),
+                # ('eval',      "",     "",      ""),
+                # ('execfile',  "",     "",      ""),
+                # ('filter',    "",     "",      ""),
+                BuiltinFunction(
+                    'getattr3',
+                    "OOO",
+                    "O",
+                    "__Pyx_GetAttr3",
+                    "getattr",
+                    utility_code=getattr3_utility_code,
+                ),  # Pyrex legacy
+                BuiltinFunction(
+                    'getattr',
+                    "OOO",
+                    "O",
+                    "__Pyx_GetAttr3",
+                    utility_code=getattr3_utility_code,
+                ),
+                BuiltinFunction(
+                    'getattr',
+                    "OO",
+                    "O",
+                    "__Pyx_GetAttr",
+                    utility_code=getattr_utility_code,
+                ),
+                BuiltinFunction(
+                    'hasattr',
+                    "OO",
+                    "b",
+                    "__Pyx_HasAttr",
+                    utility_code=UtilityCode.load("HasAttr", "Builtins.c"),
+                ),
+                BuiltinFunction('hash', "O", "h", "PyObject_Hash"),
+                # ('hex',       "",     "",      ""),
+                # ('id',        "",     "",      ""),
+                # ('input',     "",     "",      ""),
+                BuiltinFunction(
+                    'intern',
+                    "O",
+                    "O",
+                    "__Pyx_Intern",
+                    utility_code=UtilityCode.load("Intern", "Builtins.c"),
+                ),
+                BuiltinFunction(
+                    'isinstance', "OO", "b", "PyObject_IsInstance"
+                ),
+                BuiltinFunction(
+                    'issubclass', "OO", "b", "PyObject_IsSubclass"
+                ),
+                BuiltinFunction('iter', "OO", "O", "PyCallIter_New"),
+                BuiltinFunction('iter', "O", "O", "PyObject_GetIter"),
+                BuiltinFunction('len', "O", "z", "PyObject_Length"),
+                BuiltinFunction('locals', "", "O", "__pyx_locals"),
+                # ('map',       "",     "",      ""),
+                # ('max',       "",     "",      ""),
+                # ('min',       "",     "",      ""),
+                BuiltinFunction(
+                    'next',
+                    "O",
+                    "O",
+                    "__Pyx_PyIter_Next",
+                    utility_code=iter_next_utility_code,
+                ),  # not available in Py2 => implemented here
+                BuiltinFunction(
+                    'next',
+                    "OO",
+                    "O",
+                    "__Pyx_PyIter_Next2",
+                    utility_code=iter_next_utility_code,
+                ),  # not available in Py2 => implemented here
+                # ('oct',       "",     "",      ""),
+                # ('open',       "ss",   "O",     "PyFile_FromString"),   # not in Py3
+            ]
+        )
+        + [
+            BuiltinFunction(
+                'ord',
+                None,
+                None,
+                "__Pyx_long_cast",
+                func_type=PyrexTypes.CFuncType(
+                    PyrexTypes.c_long_type,
+                    [PyrexTypes.CFuncTypeArg("c", c_type, None)],
+                    is_strict_signature=True,
+                ),
+            )
+            for c_type in [
+                PyrexTypes.c_py_ucs4_type,
+                PyrexTypes.c_py_unicode_type,
+            ]
+        ]
+    )
+    + [
+        BuiltinFunction(
+            'ord',
+            None,
+            None,
+            "__Pyx_uchar_cast",
+            func_type=PyrexTypes.CFuncType(
+                PyrexTypes.c_uchar_type,
+                [PyrexTypes.CFuncTypeArg("c", c_type, None)],
+                is_strict_signature=True,
+            ),
+        )
+        for c_type in [
+            PyrexTypes.c_char_type,
+            PyrexTypes.c_schar_type,
+            PyrexTypes.c_uchar_type,
+        ]
+    ]
+) + [
+    BuiltinFunction(
+        'ord',
+        None,
+        None,
+        "__Pyx_PyObject_Ord",
+        utility_code=UtilityCode.load_cached("object_ord", "Builtins.c"),
+        func_type=PyrexTypes.CFuncType(
+            PyrexTypes.c_long_type,
+            [PyrexTypes.CFuncTypeArg("c", PyrexTypes.py_object_type, None)],
+            exception_value="(long)(Py_UCS4)-1",
+        ),
+    ),
+    BuiltinFunction('pow', "OOO", "O", "PyNumber_Power"),
+    BuiltinFunction(
+        'pow',
+        "OO",
+        "O",
+        "__Pyx_PyNumber_Power2",
+        utility_code=UtilityCode.load("pow2", "Builtins.c"),
+    ),
+    # ('range',     "",     "",      ""),
+    # ('raw_input', "",     "",      ""),
+    # ('reduce',    "",     "",      ""),
+    BuiltinFunction('reload', "O", "O", "PyImport_ReloadModule"),
+    BuiltinFunction(
+        'repr', "O", "O", "PyObject_Repr"
+    ),  # , builtin_return_type='str'),  # add in Cython 3.1
+    # ('round',     "",     "",      ""),
+    BuiltinFunction('setattr', "OOO", "r", "PyObject_SetAttr"),
+    # ('sum',       "",     "",      ""),
+    # ('sorted',    "",     "",      ""),
+    # ('type',       "O",    "O",     "PyObject_Type"),
+    BuiltinFunction(
+        'unichr',
+        "l",
+        "O",
+        "PyUnicode_FromOrdinal",
+        builtin_return_type='unicode',
+    ),
+    # ('unicode',   "",     "",      ""),
+    # ('vars',      "",     "",      ""),
+    # ('zip',       "",     "",      ""),
     #  Can't do these easily until we have builtin type entries.
-    #('typecheck',  "OO",   "i",     "PyObject_TypeCheck", False),
-    #('issubtype',  "OO",   "i",     "PyType_IsSubtype",   False),
-
+    # ('typecheck',  "OO",   "i",     "PyObject_TypeCheck", False),
+    # ('issubtype',  "OO",   "i",     "PyType_IsSubtype",   False),
     # Put in namespace append optimization.
-    BuiltinFunction('__Pyx_PyObject_Append', "OO",  "O",     "__Pyx_PyObject_Append"),
-
+    BuiltinFunction(
+        '__Pyx_PyObject_Append', "OO", "O", "__Pyx_PyObject_Append"
+    ),
     # This is conditionally looked up based on a compiler directive.
-    BuiltinFunction('__Pyx_Globals',    "",     "O",     "__Pyx_Globals",
-                    utility_code=globals_utility_code),
+    BuiltinFunction(
+        '__Pyx_Globals',
+        "",
+        "O",
+        "__Pyx_Globals",
+        utility_code=globals_utility_code,
+    ),
 ]
 
 
@@ -461,7 +642,7 @@ def init_builtin_types():
         elif name == 'StopAsyncIteration':
             objstruct_cname = "PyBaseExceptionObject"
         else:
-            objstruct_cname = 'Py%sObject' % name.capitalize()
+            objstruct_cname = f'Py{name.capitalize()}Object'
         type_class = PyrexTypes.BuiltinObjectType
         if name in ['dict', 'list', 'set', 'frozenset']:
             type_class = PyrexTypes.BuiltinTypeConstructorObjectType
@@ -574,7 +755,9 @@ def get_known_standard_library_module_scope(module_name):
 
         for name in ['ClassVar', 'Optional']:
             name = EncodedString(name)
-            indexed_type = PyrexTypes.SpecialPythonTypeConstructor(EncodedString("typing."+name))
+            indexed_type = PyrexTypes.SpecialPythonTypeConstructor(
+                EncodedString(f"typing.{name}")
+            )
             entry = mod.declare_type(name, indexed_type, pos = None)
             var_entry = Entry(name, None, PyrexTypes.py_object_type)
             var_entry.is_pyglobal = True
@@ -606,6 +789,4 @@ def get_known_standard_library_entry(qualified_name):
     mod = get_known_standard_library_module_scope(module_name)
 
     # eventually handle more sophisticated multiple lookups if needed
-    if mod and rest:
-        return mod.lookup_here(rest[0])
-    return None
+    return mod.lookup_here(rest[0]) if mod and rest else None

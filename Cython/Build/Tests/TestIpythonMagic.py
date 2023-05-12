@@ -139,7 +139,7 @@ class TestIPythonMagic(CythonTest):
         ip.ex('h = f(-10)')
         self.assertEqual(ip.user_ns['h'], -20.0)
         try:
-            os.remove(module_name + '.pyx')
+            os.remove(f'{module_name}.pyx')
         except OSError:
             pass
 
@@ -194,7 +194,7 @@ class TestIPythonMagic(CythonTest):
         # it could be that c-level output is captured by distutil-extension
         # (and not by us) and is printed to stdout:
         captured_all = captured_out + "\n" + captured_err
-        self.assertTrue("error" in captured_all, msg="error in " + captured_all)
+        self.assertTrue("error" in captured_all, msg=f"error in {captured_all}")
 
     def test_cython_link_error_shown(self):
         ip = self._ip
@@ -205,7 +205,7 @@ class TestIPythonMagic(CythonTest):
         # it could be that c-level output is captured by distutil-extension
         # (and not by us) and is printed to stdout:
         captured_all = captured_out + "\n!" + captured_err
-        self.assertTrue("error" in captured_all, msg="error in " + captured_all)
+        self.assertTrue("error" in captured_all, msg=f"error in {captured_all}")
 
     def test_cython_warning_shown(self):
         ip = self._ip

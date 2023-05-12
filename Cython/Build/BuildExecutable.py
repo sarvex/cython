@@ -24,12 +24,7 @@ LIBDIR1 = get_config_var('LIBDIR')
 LIBDIR2 = get_config_var('LIBPL')
 PYLIB = get_config_var('LIBRARY')
 PYLIB_DYN = get_config_var('LDLIBRARY')
-if PYLIB_DYN == PYLIB:
-    # no shared library
-    PYLIB_DYN = ''
-else:
-    PYLIB_DYN = os.path.splitext(PYLIB_DYN[3:])[0]  # 'lib(XYZ).so' -> XYZ
-
+PYLIB_DYN = '' if PYLIB_DYN == PYLIB else os.path.splitext(PYLIB_DYN[3:])[0]
 CC = get_config_var('CC', os.environ.get('CC', ''))
 CFLAGS = get_config_var('CFLAGS') + ' ' + os.environ.get('CFLAGS', '')
 LINKCC = get_config_var('LINKCC', os.environ.get('LINKCC', CC))
@@ -88,20 +83,34 @@ def runcmd(cmd, shell=True):
         _debug(' '.join(cmd))
 
     import subprocess
-    returncode = subprocess.call(cmd, shell=shell)
-
-    if returncode:
+    if returncode := subprocess.call(cmd, shell=shell):
         sys.exit(returncode)
 
 
 def clink(basename):
-    runcmd([LINKCC, '-o', basename + EXE_EXT, basename+'.o', '-L'+LIBDIR1, '-L'+LIBDIR2]
-           + [PYLIB_DYN and ('-l'+PYLIB_DYN) or os.path.join(LIBDIR1, PYLIB)]
-           + LIBS.split() + SYSLIBS.split() + LINKFORSHARED.split())
+    runcmd(
+        (
+            [
+                LINKCC,
+                '-o',
+                basename + EXE_EXT,
+                f'{basename}.o',
+                f'-L{LIBDIR1}',
+                f'-L{LIBDIR2}',
+            ]
+            + [PYLIB_DYN and f'-l{PYLIB_DYN}' or os.path.join(LIBDIR1, PYLIB)]
+        )
+        + LIBS.split()
+        + SYSLIBS.split()
+        + LINKFORSHARED.split()
+    )
 
 
 def ccompile(basename):
-    runcmd([CC, '-c', '-o', basename+'.o', basename+'.c', '-I' + INCDIR] + CFLAGS.split())
+    runcmd(
+        [CC, '-c', '-o', f'{basename}.o', f'{basename}.c', f'-I{INCDIR}']
+        + CFLAGS.split()
+    )
 
 
 def cycompile(input_file, options=()):

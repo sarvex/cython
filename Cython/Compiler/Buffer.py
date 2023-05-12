@@ -49,12 +49,12 @@ class IntroduceBufferAuxiliaryVars(CythonTransform):
         # on the buffer entry
         scope_items = scope.entries.items()
         bufvars = [entry for name, entry in scope_items if entry.type.is_buffer]
-        if len(bufvars) > 0:
+        if bufvars:
             bufvars.sort(key=lambda entry: entry.name)
             self.buffers_exists = True
 
         memviewslicevars = [entry for name, entry in scope_items if entry.type.is_memoryviewslice]
-        if len(memviewslicevars) > 0:
+        if memviewslicevars:
             self.buffers_exists = True
 
 
@@ -64,7 +64,7 @@ class IntroduceBufferAuxiliaryVars(CythonTransform):
                 break
         del scope_items
 
-        if isinstance(node, ModuleNode) and len(bufvars) > 0:
+        if isinstance(node, ModuleNode) and bufvars:
             # for now...note that pos is wrong
             raise CompileError(node.pos, "Buffer vars not allowed in module scope")
         for entry in bufvars:
@@ -175,7 +175,7 @@ def analyse_buffer_options(globalpos, env, posargs, dictargs, defaults=None, nee
         raise CompileError(globalpos, ERR_BUF_NDIM)
 
     mode = options.get("mode")
-    if mode and not (mode in ('full', 'strided', 'c', 'fortran')):
+    if mode and mode not in ('full', 'strided', 'c', 'fortran'):
         raise CompileError(globalpos, ERR_BUF_MODE)
 
     def assert_bool(name):
@@ -198,7 +198,7 @@ class BufferEntry(object):
         self.entry = entry
         self.type = entry.type
         self.cname = entry.buffer_aux.buflocal_nd_var.cname
-        self.buf_ptr = "%s.rcbuffer->pybuffer.buf" % self.cname
+        self.buf_ptr = f"{self.cname}.rcbuffer->pybuffer.buf"
         self.buf_ptr_type = entry.type.buffer_ptr_type
         self.init_attributes()
 
@@ -230,9 +230,7 @@ class BufferEntry(object):
             for i, s, o in zip(index_cnames,
                                self.get_buf_stridevars(),
                                self.get_buf_suboffsetvars()):
-                params.append(i)
-                params.append(s)
-                params.append(o)
+                params.extend((i, s, o))
             funcname = "__Pyx_BufPtrFull%dd" % nd
             funcgen = buf_lookup_full_code
         else:
@@ -248,9 +246,7 @@ class BufferEntry(object):
             else:
                 assert False
             for i, s in zip(index_cnames, self.get_buf_stridevars()):
-                params.append(i)
-                params.append(s)
-
+                params.extend((i, s))
         # Make sure the utility code is available
         if funcname not in code.globalstate.utility_codes:
             code.globalstate.utility_codes.add(funcname)
@@ -259,9 +255,7 @@ class BufferEntry(object):
             funcgen(protocode, defcode, name=funcname, nd=nd)
 
         buf_ptr_type_code = self.buf_ptr_type.empty_declaration_code()
-        ptrcode = "%s(%s, %s, %s)" % (funcname, buf_ptr_type_code, self.buf_ptr,
-                                      ", ".join(params))
-        return ptrcode
+        return f'{funcname}({buf_ptr_type_code}, {self.buf_ptr}, {", ".join(params)})'
 
 
 def get_flags(buffer_aux, buffer_type):
@@ -297,11 +291,18 @@ def put_unpack_buffer_aux_into_scope(buf_entry, code):
 
     ln = []
     for i in range(buf_entry.type.ndim):
-        for fldname in fldnames:
-            ln.append("%s.diminfo[%d].%s = %s.rcbuffer->pybuffer.%s[%d];" % (
-                pybuffernd_struct, i, fldname,
-                pybuffernd_struct, fldname, i,
-            ))
+        ln.extend(
+            "%s.diminfo[%d].%s = %s.rcbuffer->pybuffer.%s[%d];"
+            % (
+                pybuffernd_struct,
+                i,
+                fldname,
+                pybuffernd_struct,
+                fldname,
+                i,
+            )
+            for fldname in fldnames
+        )
     code.putln(' '.join(ln))
 
 def put_init_vars(entry, code):
@@ -309,13 +310,13 @@ def put_init_vars(entry, code):
     pybuffernd_struct = bufaux.buflocal_nd_var.cname
     pybuffer_struct = bufaux.rcbuf_var.cname
     # init pybuffer_struct
-    code.putln("%s.pybuffer.buf = NULL;" % pybuffer_struct)
-    code.putln("%s.refcount = 0;" % pybuffer_struct)
+    code.putln(f"{pybuffer_struct}.pybuffer.buf = NULL;")
+    code.putln(f"{pybuffer_struct}.refcount = 0;")
     # init the buffer object
     # code.put_init_var_to_py_none(entry)
     # init the pybuffernd_struct
-    code.putln("%s.data = NULL;" % pybuffernd_struct)
-    code.putln("%s.rcbuffer = &%s;" % (pybuffernd_struct, pybuffer_struct))
+    code.putln(f"{pybuffernd_struct}.data = NULL;")
+    code.putln(f"{pybuffernd_struct}.rcbuffer = &{pybuffer_struct};")
 
 
 def put_acquire_arg_buffer(entry, code, pos):
@@ -325,7 +326,7 @@ def put_acquire_arg_buffer(entry, code, pos):
     # Acquire any new buffer
     code.putln("{")
     code.putln("__Pyx_BufFmt_StackElem __pyx_stack[%d];" % entry.type.dtype.struct_nesting_depth())
-    code.putln(code.error_goto_if("%s == -1" % getbuffer, pos))
+    code.putln(code.error_goto_if(f"{getbuffer} == -1", pos))
     code.putln("}")
     # An exception raised in arg parsing cannot be caught, so no
     # need to care about the buffer then.
@@ -334,7 +335,9 @@ def put_acquire_arg_buffer(entry, code, pos):
 
 def put_release_buffer_code(code, entry):
     code.globalstate.use_utility_code(acquire_utility_code)
-    code.putln("__Pyx_SafeReleaseBuffer(&%s.rcbuffer->pybuffer);" % entry.buffer_aux.buflocal_nd_var.cname)
+    code.putln(
+        f"__Pyx_SafeReleaseBuffer(&{entry.buffer_aux.buflocal_nd_var.cname}.rcbuffer->pybuffer);"
+    )
 
 
 def get_getbuffer_call(code, obj_cname, buffer_aux, buffer_type):
@@ -378,11 +381,13 @@ def put_assign_to_buffer(lhs_cname, rhs_cname, buf_entry,
 
     if is_initialized:
         # Release any existing buffer
-        code.putln('__Pyx_SafeReleaseBuffer(&%s.rcbuffer->pybuffer);' % pybuffernd_struct)
+        code.putln(
+            f'__Pyx_SafeReleaseBuffer(&{pybuffernd_struct}.rcbuffer->pybuffer);'
+        )
         # Acquire
         retcode_cname = code.funcstate.allocate_temp(PyrexTypes.c_int_type, manage_ref=False)
-        code.putln("%s = %s;" % (retcode_cname, getbuffer % rhs_cname))
-        code.putln('if (%s) {' % (code.unlikely("%s < 0" % retcode_cname)))
+        code.putln(f"{retcode_cname} = {getbuffer % rhs_cname};")
+        code.putln('if (%s) {' % code.unlikely(f"{retcode_cname} < 0"))
         # If acquisition failed, attempt to reacquire the old buffer
         # before raising the exception. A failure of reacquisition
         # will cause the reacquisition exception to be reported, one
@@ -390,7 +395,7 @@ def put_assign_to_buffer(lhs_cname, rhs_cname, buf_entry,
         exc_temps = tuple(code.funcstate.allocate_temp(PyrexTypes.py_object_type, manage_ref=False)
                           for _ in range(3))
         code.putln('PyErr_Fetch(&%s, &%s, &%s);' % exc_temps)
-        code.putln('if (%s) {' % code.unlikely("%s == -1" % (getbuffer % lhs_cname)))
+        code.putln('if (%s) {' % code.unlikely(f"{getbuffer % lhs_cname} == -1"))
         code.putln('Py_XDECREF(%s); Py_XDECREF(%s); Py_XDECREF(%s);' % exc_temps)  # Do not refnanny these!
         code.globalstate.use_utility_code(raise_buffer_fallback_code)
         code.putln('__Pyx_RaiseBufferFallbackError();')
@@ -409,11 +414,10 @@ def put_assign_to_buffer(lhs_cname, rhs_cname, buf_entry,
         # Our entry had no previous value, so set to None when acquisition fails.
         # In this case, auxiliary vars should be set up right in initialization to a zero-buffer,
         # so it suffices to set the buf field to NULL.
-        code.putln('if (%s) {' % code.unlikely("%s == -1" % (getbuffer % rhs_cname)))
-        code.putln('%s = %s; __Pyx_INCREF(Py_None); %s.rcbuffer->pybuffer.buf = NULL;' %
-                   (lhs_cname,
-                    PyrexTypes.typecast(buffer_type, PyrexTypes.py_object_type, "Py_None"),
-                    pybuffernd_struct))
+        code.putln('if (%s) {' % code.unlikely(f"{getbuffer % rhs_cname} == -1"))
+        code.putln(
+            f'{lhs_cname} = {PyrexTypes.typecast(buffer_type, PyrexTypes.py_object_type, "Py_None")}; __Pyx_INCREF(Py_None); {pybuffernd_struct}.rcbuffer->pybuffer.buf = NULL;'
+        )
         code.putln(code.error_goto(pos))
         code.put('} else {')
         # Unpack indices
@@ -446,27 +450,38 @@ def put_buffer_lookup_code(entry, index_signeds, index_cnames, directives,
         # If an error occurs, the temp is set to the index dimension the
         # error is occurring at.
         failed_dim_temp = code.funcstate.allocate_temp(PyrexTypes.c_int_type, manage_ref=False)
-        code.putln("%s = -1;" % failed_dim_temp)
+        code.putln(f"{failed_dim_temp} = -1;")
         for dim, (signed, cname, shape) in enumerate(zip(index_signeds, index_cnames, entry.get_buf_shapevars())):
             if signed != 0:
                 # not unsigned, deal with negative index
                 code.putln("if (%s < 0) {" % cname)
                 if negative_indices:
-                    code.putln("%s += %s;" % (cname, shape))
-                    code.putln("if (%s) %s = %d;" % (
-                        code.unlikely("%s < 0" % cname),
-                        failed_dim_temp, dim))
+                    code.putln(f"{cname} += {shape};")
+                    code.putln(
+                        (
+                            "if (%s) %s = %d;"
+                            % (
+                                code.unlikely(f"{cname} < 0"),
+                                failed_dim_temp,
+                                dim,
+                            )
+                        )
+                    )
                 else:
                     code.putln("%s = %d;" % (failed_dim_temp, dim))
                 code.put("} else ")
             # check bounds in positive direction
-            if signed != 0:
-                cast = ""
-            else:
-                cast = "(size_t)"
-            code.putln("if (%s) %s = %d;" % (
-                code.unlikely("%s >= %s%s" % (cname, cast, shape)),
-                failed_dim_temp, dim))
+            cast = "" if signed != 0 else "(size_t)"
+            code.putln(
+                (
+                    "if (%s) %s = %d;"
+                    % (
+                        code.unlikely(f"{cname} >= {cast}{shape}"),
+                        failed_dim_temp,
+                        dim,
+                    )
+                )
+            )
 
         if in_nogil_context:
             code.globalstate.use_utility_code(raise_indexerror_nogil)
@@ -475,8 +490,8 @@ def put_buffer_lookup_code(entry, index_signeds, index_cnames, directives,
             code.globalstate.use_utility_code(raise_indexerror_code)
             func = '__Pyx_RaiseBufferIndexError'
 
-        code.putln("if (%s) {" % code.unlikely("%s != -1" % failed_dim_temp))
-        code.putln('%s(%s);' % (func, failed_dim_temp))
+        code.putln("if (%s) {" % code.unlikely(f"{failed_dim_temp} != -1"))
+        code.putln(f'{func}({failed_dim_temp});')
         code.putln(code.error_goto(pos))
         code.putln('}')
         code.funcstate.release_temp(failed_dim_temp)
@@ -484,7 +499,7 @@ def put_buffer_lookup_code(entry, index_signeds, index_cnames, directives,
         # Only fix negative indices.
         for signed, cname, shape in zip(index_signeds, index_cnames, entry.get_buf_shapevars()):
             if signed != 0:
-                code.putln("if (%s < 0) %s += %s;" % (cname, cname, shape))
+                code.putln(f"if ({cname} < 0) {cname} += {shape};")
 
     return entry.generate_buffer_lookup_code(code, index_cnames)
 
@@ -522,7 +537,7 @@ def buf_lookup_strided_code(proto, defin, name, nd):
     # _i_ndex, _s_tride
     args = ", ".join(["i%d, s%d" % (i, i) for i in range(nd)])
     offset = " + ".join(["i%d * s%d" % (i, i) for i in range(nd)])
-    proto.putln("#define %s(type, buf, %s) (type)((char*)buf + %s)" % (name, args, offset))
+    proto.putln(f"#define {name}(type, buf, {args}) (type)((char*)buf + {offset})")
 
 
 def buf_lookup_c_code(proto, defin, name, nd):
@@ -532,7 +547,7 @@ def buf_lookup_c_code(proto, defin, name, nd):
     Still we keep the same signature for now.
     """
     if nd == 1:
-        proto.putln("#define %s(type, buf, i0, s0) ((type)buf + i0)" % name)
+        proto.putln(f"#define {name}(type, buf, i0, s0) ((type)buf + i0)")
     else:
         args = ", ".join(["i%d, s%d" % (i, i) for i in range(nd)])
         offset = " + ".join(["i%d * s%d" % (i, i) for i in range(nd - 1)])
@@ -544,7 +559,7 @@ def buf_lookup_fortran_code(proto, defin, name, nd):
     Like C lookup, but the first index is optimized instead.
     """
     if nd == 1:
-        proto.putln("#define %s(type, buf, i0, s0) ((type)buf + i0)" % name)
+        proto.putln(f"#define {name}(type, buf, i0, s0) ((type)buf + i0)")
     else:
         args = ", ".join(["i%d, s%d" % (i, i) for i in range(nd)])
         offset = " + ".join(["i%d * s%d" % (i, i) for i in range(1, nd)])
@@ -625,10 +640,7 @@ def mangle_dtype_name(dtype):
     elif dtype.is_ptr:
         return "ptr"
     else:
-        if dtype.is_typedef or dtype.is_struct_or_union:
-            prefix = "nn_"
-        else:
-            prefix = ""
+        prefix = "nn_" if dtype.is_typedef or dtype.is_struct_or_union else ""
         return prefix + dtype.specialization_name()
 
 def get_type_information_cname(code, dtype, maxdepth=None):
@@ -642,8 +654,8 @@ def get_type_information_cname(code, dtype, maxdepth=None):
     filled in.
     """
     namesuffix = mangle_dtype_name(dtype)
-    name = "__Pyx_TypeInfo_%s" % namesuffix
-    structinfo_name = "__Pyx_StructFields_%s" % namesuffix
+    name = f"__Pyx_TypeInfo_{namesuffix}"
+    structinfo_name = f"__Pyx_StructFields_{namesuffix}"
 
     if dtype.is_error: return "<error>"
 
@@ -699,11 +711,11 @@ def get_type_information_cname(code, dtype, maxdepth=None):
         flags = "0"
         is_unsigned = "0"
         if dtype is PyrexTypes.c_char_type:
-            is_unsigned = "__PYX_IS_UNSIGNED(%s)" % declcode
+            is_unsigned = f"__PYX_IS_UNSIGNED({declcode})"
             typegroup = "'H'"
         elif dtype.is_int:
-            is_unsigned = "__PYX_IS_UNSIGNED(%s)" % declcode
-            typegroup = "%s ? 'U' : 'I'" % is_unsigned
+            is_unsigned = f"__PYX_IS_UNSIGNED({declcode})"
+            typegroup = f"{is_unsigned} ? 'U' : 'I'"
         elif complex_possible or dtype.is_complex:
             typegroup = "'C'"
         elif dtype.is_float:
